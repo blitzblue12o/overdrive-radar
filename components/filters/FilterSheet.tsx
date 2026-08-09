@@ -243,7 +243,13 @@ export function FilterSheet({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button type="button" variant="secondary" size="icon" aria-label="Open filters">
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="h-11 w-11 shrink-0 border border-[var(--border)] bg-[var(--card)] shadow-sm"
+          aria-label="Open filters"
+        >
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
       </SheetTrigger>

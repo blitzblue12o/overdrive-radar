@@ -29,6 +29,7 @@ export function EventMap({
   suppressViewportFetchRef,
   onUserLocation,
   className,
+  controlsPosition = "top-right",
 }: {
   data: EventFeatureCollection;
   selectedEventId: string | null;
@@ -38,6 +39,8 @@ export function EventMap({
   suppressViewportFetchRef: React.MutableRefObject<boolean>;
   onUserLocation?: (coords: { lat: number; lng: number } | null) => void;
   className?: string;
+  /** Keep mobile chrome clear — use bottom-right under the header. */
+  controlsPosition?: "top-right" | "bottom-right";
 }) {
   const experience = useExperience();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -68,14 +71,17 @@ export function EventMap({
       attributionControl: true,
     });
 
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(
+      new mapboxgl.NavigationControl({ showCompass: false }),
+      controlsPosition
+    );
 
     const geo = new mapboxgl.GeolocateControl({
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: false,
       showUserHeading: false,
     });
-    map.addControl(geo, "top-right");
+    map.addControl(geo, controlsPosition);
     geo.on("geolocate", (e) => {
       onUserLocation?.({
         lat: e.coords.latitude,

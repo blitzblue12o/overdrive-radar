@@ -272,18 +272,18 @@ function ExperienceApp() {
       </div>
 
       <div className="relative h-full md:hidden">
-        <div className="absolute inset-x-0 top-0 z-10 space-y-2 p-3">
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/95 px-3 py-2 backdrop-blur">
-            <div>
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 space-y-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/95 px-3 py-2 shadow-sm backdrop-blur">
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
                 Overdrive Radar
               </p>
-              <p className="text-sm font-semibold">{experience.name}</p>
+              <p className="truncate text-sm font-semibold">{experience.name}</p>
             </div>
-            <ExperienceMenu />
+            <ExperienceMenu compact />
           </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
+          <div className="pointer-events-auto flex items-center gap-2">
+            <div className="min-w-0 flex-1">
               <SearchBar />
             </div>
             <FilterSheet eventCount={events.length} />
@@ -299,6 +299,7 @@ function ExperienceApp() {
           onViewportChange={handleViewportChange}
           suppressViewportFetchRef={suppressViewportFetchRef}
           onUserLocation={setUserLocation}
+          controlsPosition="bottom-right"
         />
 
         <MobileBottomSheet

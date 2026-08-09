@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowLeftRight } from "lucide-react";
 import { useExperience } from "@/components/experience/ExperienceProvider";
 import { getExperienceConfig } from "@/lib/config/experiences";
 import { Button } from "@/components/ui/button";
@@ -13,16 +14,40 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export function ExperienceMenu() {
+export function ExperienceMenu({
+  compact = false,
+}: {
+  /** Icon-only trigger for tight mobile headers. */
+  compact?: boolean;
+}) {
   const current = useExperience();
   const target = getExperienceConfig(current.switchTarget);
 
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm" aria-label={current.switcherLabel}>
-          {current.switcherLabel}
-        </Button>
+        {compact ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            aria-label={current.switcherLabel}
+            title={current.switcherLabel}
+          >
+            <ArrowLeftRight className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            aria-label={current.switcherLabel}
+          >
+            {current.switcherLabel}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

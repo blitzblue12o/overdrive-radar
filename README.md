@@ -78,16 +78,33 @@ npm test
 npm run build
 ```
 
-### Vercel
+## Deployment
 
-This repo is a Next.js app at the **repository root** (`package.json` + `next.config.mjs` + `app/`).
+This is a Next.js App Router app at the **repository root** (`package.json`, `next.config.mjs`, `app/`). Vercel should auto-detect Next.js; Root Directory must stay empty / `.`.
 
-- Framework is declared in `vercel.json` (`"framework": "nextjs"`)
-- Node engine: `20.x` in `package.json`
-- In the Vercel project settings, leave **Root Directory** empty / `.` (do not nest it)
-- Set env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_MAPBOX_TOKEN`
+### Environment variables (Vercel project dashboard)
 
-## Project layout (Wave 1)
+Set these for **Production** (and Preview if you want previews to hit live data). Use the **live** Supabase project — not local Docker ports.
+
+| Vercel env var | Source of value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Dashboard → Project Settings → API → Project URL (`https://fhnfjzdrhzwypuqxakrn.supabase.co`) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page → `anon` `public` key (never `service_role`) |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox account → public access token (`pk.…`) |
+
+Local mapping: the same three names as in `.env.example` / `.env.local`, but with live values instead of `http://127.0.0.1:54331` and the local demo anon key.
+
+### Manual deploy steps (human)
+
+1. Import or open the GitHub repo in Vercel (or `vercel link` / `vercel --prod` if you use the CLI locally).
+2. Confirm Framework = Next.js, Root Directory = `.`, Node = `20.x`.
+3. Paste the three env vars above into Project Settings → Environment Variables.
+4. Deploy Production from `main` (or promote a Preview).
+5. Run the post-deploy checklist on the live URL.
+
+This repo does not automate Vercel linking or production deploys from CI in Wave 1/2.
+
+## Project layout (Wave 1–2)
 
 ```
 app/                    # routes + API
