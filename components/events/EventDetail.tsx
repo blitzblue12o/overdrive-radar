@@ -1,6 +1,7 @@
 "use client";
 
-import { ExternalLink, MapPinned, Navigation } from "lucide-react";
+import { useEffect } from "react";
+import { ExternalLink, MapPinned, Navigation, X } from "lucide-react";
 import { useExperience } from "@/components/experience/ExperienceProvider";
 import { FallbackArt } from "@/components/events/FallbackArt";
 import { PriceBadge } from "@/components/events/PriceBadge";
@@ -18,15 +19,33 @@ export function EventDetail({
   event,
   userLocation,
   loading,
+  onClose,
 }: {
   event: EventCardData | null;
   userLocation?: { lat: number; lng: number } | null;
   loading?: boolean;
+  onClose?: () => void;
 }) {
   const experience = useExperience();
 
+  useEffect(() => {
+    if (!onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   if (loading || !event) {
-    return <EventDetailSkeleton />;
+    return (
+      <div className="relative">
+        {onClose && (
+          <CloseButton onClose={onClose} className="absolute right-0 top-0 z-10" />
+        )}
+        <EventDetailSkeleton />
+      </div>
+    );
   }
 
   const categoryLabel = formatCategoryLabel(
@@ -49,7 +68,9 @@ export function EventDetail({
         : null;
 
   return (
-    <article className="flex flex-col gap-4">
+    <article className="relative flex flex-col gap-4">
+      {onClose && <CloseButton onClose={onClose} className="absolute right-0 top-0 z-10" />}
+
       <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl">
         {event.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -72,7 +93,7 @@ export function EventDetail({
         <PriceBadge event={event} variant="detail" />
       </div>
 
-      <h2 className="text-2xl font-semibold tracking-tight leading-tight">
+      <h2 className="pr-10 text-2xl font-semibold tracking-tight leading-tight">
         {event.title}
       </h2>
 
@@ -82,7 +103,10 @@ export function EventDetail({
         </p>
         {event.venue_name && (
           <p className="flex items-start gap-2 text-[var(--foreground)]">
-            <MapPinned className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" aria-hidden />
+            <MapPinned
+              className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]"
+              aria-hidden
+            />
             <span>
               {event.venue_name}
               {event.address ? (
@@ -126,9 +150,32 @@ export function EventDetail({
   );
 }
 
+function CloseButton({
+  onClose,
+  className,
+}: {
+  onClose: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close event details"
+      className={`flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)]/95 text-[var(--foreground)] shadow-sm backdrop-blur hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${className ?? ""}`}
+    >
+      <X className="h-4 w-4" aria-hidden />
+    </button>
+  );
+}
+
 export function EventDetailSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse" aria-busy="true" aria-label="Loading event">
+    <div
+      className="space-y-4 animate-pulse"
+      aria-busy="true"
+      aria-label="Loading event"
+    >
       <div className="aspect-[16/9] w-full rounded-xl bg-[var(--muted)]" />
       <div className="h-5 w-24 rounded bg-[var(--muted)]" />
       <div className="h-8 w-3/4 rounded bg-[var(--muted)]" />

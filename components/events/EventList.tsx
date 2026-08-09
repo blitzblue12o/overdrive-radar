@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { EventCard, EventCardSkeleton, type EventCardData } from "@/components/events/EventCard";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +14,7 @@ export function EventList({
   onClearFilters,
   onExpandDistance,
   canExpandDistance,
+  scrollSelectedIntoView = false,
 }: {
   events: EventCardData[];
   selectedEventId: string | null;
@@ -23,7 +25,19 @@ export function EventList({
   onClearFilters?: () => void;
   onExpandDistance?: () => void;
   canExpandDistance?: boolean;
+  /** When true, scroll the selected card into view (event-detail listings). */
+  scrollSelectedIntoView?: boolean;
 }) {
+  const selectedRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    if (!scrollSelectedIntoView || !selectedEventId) return;
+    selectedRef.current?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [scrollSelectedIntoView, selectedEventId, events]);
+
   if (loading) {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading events">
@@ -86,15 +100,18 @@ export function EventList({
 
   return (
     <ul className="space-y-3" aria-label="Events">
-      {events.map((event) => (
-        <li key={event.id}>
-          <EventCard
-            event={event}
-            selected={selectedEventId === event.id}
-            onSelect={onSelect}
-          />
-        </li>
-      ))}
+      {events.map((event) => {
+        const selected = selectedEventId === event.id;
+        return (
+          <li key={event.id} ref={selected ? selectedRef : undefined}>
+            <EventCard
+              event={event}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          </li>
+        );
+      })}
     </ul>
   );
 }

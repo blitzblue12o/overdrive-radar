@@ -1,0 +1,25 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//OverdriveRadar//Test//EN
+X-WR-TIMEZONE:America/Los_Angeles
+BEGIN:VEVENT
+UID:test-event-001@example.com
+DTSTART:20260815T180000Z
+DTEND:20260815T200000Z
+SUMMARY:Cars & Coffee Meetup
+DESCRIPTION:Morning gather for modified street cars.
+LOCATION:100 Main St\, Ventura\, CA
+GEO:34.280000;-119.290000
+CATEGORIES:Car Meet
+URL:https://example.com/events/1
+END:VEVENT
+BEGIN:VEVENT
+UID:test-event-002@example.com
+DTSTART;VALUE=DATE:20260820
+DTEND;VALUE=DATE:20260821
+SUMMARY:Library Storytime
+DESCRIPTION:Family reading hour.
+LOCATION:Thousand Oaks Library
+CATEGORIES:Library,Kids
+END:VEVENT
+END:VCALENDAR

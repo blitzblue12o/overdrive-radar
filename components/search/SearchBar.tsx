@@ -1,17 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useExperience } from "@/components/experience/ExperienceProvider";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { debounce } from "@/lib/utils";
 
 export function SearchBar() {
@@ -20,8 +13,8 @@ export function SearchBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
+  const hintId = useId();
 
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(urlQuery);
   const searchParamsRef = useRef(searchParams);
   const pathnameRef = useRef(pathname);
@@ -49,52 +42,26 @@ export function SearchBar() {
     return () => sync.cancel();
   }, [query, router]);
 
-  const displayLabel = urlQuery || experience.searchPlaceholder;
-
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex h-11 w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        aria-label="Open search"
-      >
-        <Search className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" aria-hidden />
-        <span
-          className={
-            urlQuery
-              ? "truncate text-[var(--foreground)]"
-              : "truncate text-[var(--muted-foreground)]"
-          }
-        >
-          {displayLabel}
-        </span>
-      </button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="top-[12%] translate-y-0 sm:top-[15%]">
-          <DialogHeader>
-            <DialogTitle>Search</DialogTitle>
-            <DialogDescription>
-              Search event titles and venues in the current map area.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]"
-              aria-hidden
-            />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={experience.searchPlaceholder}
-              className="pl-9"
-              autoFocus
-              aria-label="Search query"
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+    <div className="relative">
+      <Search
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+        aria-hidden
+      />
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={experience.searchPlaceholder}
+        className="h-11 pl-9"
+        aria-label="Search query"
+        aria-describedby={hintId}
+        title="Search event titles and venues in the current map area"
+        enterKeyHint="search"
+        autoComplete="off"
+      />
+      <p id={hintId} className="sr-only">
+        Search event titles and venues in the current map area.
+      </p>
+    </div>
   );
 }

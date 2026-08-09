@@ -4,3 +4,4 @@
  */
 export const EVENT_POINT_LAYER_ID = "events-unclustered";
 export const EVENT_SELECTED_LAYER_ID = "events-selected";
+export const EVENT_SELECTED_RING_LAYER_ID = "events-selected-ring";

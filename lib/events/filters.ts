@@ -227,11 +227,123 @@ export function hasActiveUiFilters(params: {
   );
 }
 
-/** Shared helper for EventMap suppress flag — unit-tested for flyTo regression. */
+/** Count of active UI filters for collapsed-sheet / chrome labels. */
+export function countActiveUiFilters(params: {
+  query?: string | null;
+  date?: string | null;
+  categories?: string[];
+  distanceMiles?: number | null;
+  defaultDistanceMiles?: number;
+}): number {
+  let n = 0;
+  if (params.query?.trim()) n++;
+  if (params.date) n++;
+  if (params.categories && params.categories.length > 0) n++;
+  const def = params.defaultDistanceMiles ?? 25;
+  if (params.distanceMiles != null && params.distanceMiles !== def) n++;
+  return n;
+}
+
+/** Shared helper for EventMap suppress/fit flags — unit-tested for flyTo regression. */
 export function consumeViewportSuppress(ref: { current: boolean }): boolean {
   if (ref.current) {
     ref.current = false;
     return true;
   }
   return false;
+}
+
+/**
+ * Location modes (URL-backed):
+ * - current:  ?near=you&lat=&lng=&loc=  — GPS coords authoritative; loc is display only
+ * - searched: ?lat=&lng=&loc=           — geocoded search coords authoritative
+ * - unknown:  no lat/lng
+ */
+export type LocationMode = "current" | "searched" | "unknown";
+
+export type ParsedLocation = {
+  mode: LocationMode;
+  /** Human-readable label from ?loc= (e.g. "Thousand Oaks, CA"). */
+  displayLocation: string | null;
+  lat: number | null;
+  lng: number | null;
+};
+
+/** Params that carry geographic context across experience switches. */
+export const GEO_CONTEXT_PARAMS = ["lat", "lng", "loc", "near", "distance"] as const;
+
+export function parseLocationFromSearchParams(
+  params: URLSearchParams
+): ParsedLocation {
+  const latRaw = params.get("lat");
+  const lngRaw = params.get("lng");
+  if (latRaw == null || lngRaw == null || latRaw === "" || lngRaw === "") {
+    return { mode: "unknown", displayLocation: null, lat: null, lng: null };
+  }
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    Math.abs(lat) > 90 ||
+    Math.abs(lng) > 180
+  ) {
+    return { mode: "unknown", displayLocation: null, lat: null, lng: null };
+  }
+
+  const displayLocation = params.get("loc")?.trim() || null;
+  const isCurrent = params.get("near") === "you";
+  return {
+    mode: isCurrent ? "current" : "searched",
+    displayLocation,
+    lat,
+    lng,
+  };
+}
+
+/** Collapsed-pill / map chrome label — omit when location is unknown. */
+export function locationNearLabel(location: ParsedLocation): string | null {
+  if (location.mode === "unknown") return null;
+  const label =
+    location.displayLocation?.trim() ||
+    (location.mode === "current" ? "Current location" : null);
+  return label ? `Near ${label}` : null;
+}
+
+export function clearLocationParams(params: URLSearchParams) {
+  params.delete("loc");
+  params.delete("lat");
+  params.delete("lng");
+  params.delete("near");
+}
+
+/** GPS / "use my location" — coords are precise; loc is display-only. */
+export function setCurrentLocationParams(
+  params: URLSearchParams,
+  next: { lat: number; lng: number; loc?: string | null }
+) {
+  params.set("near", "you");
+  params.set("lat", String(next.lat));
+  params.set("lng", String(next.lng));
+  if (next.loc?.trim()) params.set("loc", next.loc.trim());
+  else params.delete("loc");
+}
+
+/** User-entered city/ZIP search — geocoded coords are authoritative. */
+export function setSearchedLocationParams(
+  params: URLSearchParams,
+  next: { loc: string; lat: number; lng: number }
+) {
+  params.delete("near");
+  params.set("loc", next.loc);
+  params.set("lat", String(next.lat));
+  params.set("lng", String(next.lng));
+}
+
+/** @deprecated Use setSearchedLocationParams */
+export function setManualLocationParams(
+  params: URLSearchParams,
+  next: { loc: string; lat: number; lng: number }
+) {
+  setSearchedLocationParams(params, next);
 }

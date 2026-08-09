@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<rss version="2.0" xmlns:calendarEvent="https://www.anaheim.net/Calendar.aspx" xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#">
+  <channel>
+    <title>Sample Calendar</title>
+    <item>
+      <title>Community Picnic</title>
+      <link>https://example.com/picnic</link>
+      <guid>picnic-001</guid>
+      <description>Neighborhood picnic in the park.</description>
+      <pubDate>Sat, 15 Aug 2026 12:00:00 GMT</pubDate>
+      <calendarEvent:eventDate>Sat, 15 Aug 2026 12:00:00 GMT</calendarEvent:eventDate>
+      <calendarEvent:location>Central Park, Anaheim, CA</calendarEvent:location>
+      <category>Community</category>
+      <geo:lat>33.835</geo:lat>
+      <geo:long>-117.914</geo:long>
+    </item>
+    <item>
+      <title>Missing Date Should Skip</title>
+      <description>No usable date</description>
+    </item>
+  </channel>
+</rss>
