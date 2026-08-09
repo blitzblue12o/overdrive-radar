@@ -78,6 +78,15 @@ npm test
 npm run build
 ```
 
+### Vercel
+
+This repo is a Next.js app at the **repository root** (`package.json` + `next.config.mjs` + `app/`).
+
+- Framework is declared in `vercel.json` (`"framework": "nextjs"`)
+- Node engine: `20.x` in `package.json`
+- In the Vercel project settings, leave **Root Directory** empty / `.` (do not nest it)
+- Set env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_MAPBOX_TOKEN`
+
 ## Project layout (Wave 1)
 
 ```
