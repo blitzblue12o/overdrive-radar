@@ -80,7 +80,11 @@ export async function GET(request: NextRequest) {
 
     const isolated = events.filter((e) => e.experience === experience);
     return NextResponse.json(eventsToFeatureCollection(isolated));
-  } catch {
+  } catch (err) {
+    console.error(
+      "[api/events]",
+      err instanceof Error ? err.message : "Unable to load events"
+    );
     return NextResponse.json(
       { error: "Unable to load events" },
       { status: 500 }
