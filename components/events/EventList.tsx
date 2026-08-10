@@ -15,6 +15,7 @@ export function EventList({
   onExpandDistance,
   canExpandDistance,
   scrollSelectedIntoView = false,
+  recurrenceLabelById,
 }: {
   events: EventCardData[];
   selectedEventId: string | null;
@@ -27,6 +28,8 @@ export function EventList({
   canExpandDistance?: boolean;
   /** When true, scroll the selected card into view (event-detail listings). */
   scrollSelectedIntoView?: boolean;
+  /** Presentation-only recurrence labels keyed by occurrence id. */
+  recurrenceLabelById?: Map<string, string> | null;
 }) {
   const selectedRef = useRef<HTMLLIElement | null>(null);
 
@@ -38,7 +41,9 @@ export function EventList({
     });
   }, [scrollSelectedIntoView, selectedEventId, events]);
 
-  if (loading) {
+  // Only skeleton when we have nothing to show. Replacing an existing list with
+  // short skeletons clamps the parent scroll container to the top.
+  if (loading && events.length === 0) {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading events">
         {Array.from({ length: 5 }).map((_, i) => (
@@ -63,22 +68,31 @@ export function EventList({
   }
 
   if (events.length === 0) {
-    if (filtersActive) {
+    const showExpand = Boolean(onExpandDistance && canExpandDistance);
+    const showClear = Boolean(onClearFilters && filtersActive);
+
+    if (filtersActive || showExpand) {
       return (
         <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-4 text-sm space-y-3">
           <div>
-            <p className="font-medium">No events match these filters</p>
+            <p className="font-medium">
+              {filtersActive
+                ? "No events match these filters"
+                : "No events in this area"}
+            </p>
             <p className="mt-1 text-[var(--muted-foreground)]">
-              Clear filters or expand the search distance.
+              {showExpand
+                ? "Try expanding the search distance, or clear filters."
+                : "Clear filters to see more nearby events."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {onClearFilters && (
+            {showClear && (
               <Button type="button" variant="secondary" size="sm" onClick={onClearFilters}>
                 Clear filters
               </Button>
             )}
-            {onExpandDistance && canExpandDistance && (
+            {showExpand && (
               <Button type="button" variant="outline" size="sm" onClick={onExpandDistance}>
                 Expand distance
               </Button>
@@ -108,6 +122,7 @@ export function EventList({
               event={event}
               selected={selected}
               onSelect={onSelect}
+              recurrenceLabel={recurrenceLabelById?.get(event.id) ?? null}
             />
           </li>
         );

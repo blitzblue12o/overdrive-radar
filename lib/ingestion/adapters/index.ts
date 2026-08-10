@@ -1,4 +1,5 @@
 import { IcsAdapter } from "@/lib/ingestion/adapters/ics";
+import { LibraryCalendarAdapter } from "@/lib/ingestion/adapters/librarycalendar";
 import { RssAdapter } from "@/lib/ingestion/adapters/rss";
 import { MotorsportRegAdapter } from "@/lib/ingestion/adapters/motorsportreg";
 import type { AdapterType, SourceAdapter } from "@/lib/ingestion/types";
@@ -7,6 +8,7 @@ const adapters: Record<AdapterType, SourceAdapter> = {
   ics: new IcsAdapter(),
   rss: new RssAdapter(),
   motorsportreg: new MotorsportRegAdapter(),
+  librarycalendar: new LibraryCalendarAdapter(),
 };
 
 export function getAdapter(type: AdapterType): SourceAdapter {

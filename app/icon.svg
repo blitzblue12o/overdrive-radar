@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Overdrive Radar">
+  <defs>
+    <radialGradient id="sweep" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5EB6FF" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#5EB6FF" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#5EB6FF" stop-opacity="0.04"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" ry="112" fill="#0B1424"/>
+  <g fill="none" stroke="#4A6F9A" stroke-width="8" stroke-opacity="0.85">
+    <circle cx="256" cy="256" r="72"/>
+    <circle cx="256" cy="256" r="124"/>
+    <circle cx="256" cy="256" r="176"/>
+  </g>
+  <g stroke="#4A6F9A" stroke-width="7" stroke-linecap="round" stroke-opacity="0.9">
+    <line x1="256" y1="62" x2="256" y2="450"/>
+    <line x1="62" y1="256" x2="450" y2="256"/>
+    <line x1="256" y1="48" x2="256" y2="68"/>
+    <line x1="256" y1="444" x2="256" y2="464"/>
+    <line x1="48" y1="256" x2="68" y2="256"/>
+    <line x1="444" y1="256" x2="464" y2="256"/>
+  </g>
+  <path fill="url(#sweep)" d="M256 256 L256 70 A186 186 0 0 1 414 178 Z"/>
+  <line x1="256" y1="256" x2="402" y2="168" stroke="#5EB6FF" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="18" fill="#5EB6FF"/>
+</svg>

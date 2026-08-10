@@ -7,6 +7,8 @@ export interface CalendarEventInput {
   venue_name?: string | null;
   address?: string | null;
   timezone?: string | null;
+  /** Authoritative ICS VALUE=DATE — when true, emit DATE-valued DTSTART/DTEND. */
+  all_day?: boolean | null;
 }
 
 function pad(n: number): string {
@@ -23,6 +25,15 @@ function toIcsUtc(date: Date): string {
     pad(date.getUTCMinutes()) +
     pad(date.getUTCSeconds()) +
     "Z"
+  );
+}
+
+/** All-day DATE value from our UTC-noon storage (YYYYMMDD). */
+function toIcsDate(date: Date): string {
+  return (
+    date.getUTCFullYear().toString() +
+    pad(date.getUTCMonth() + 1) +
+    pad(date.getUTCDate())
   );
 }
 
@@ -58,6 +69,14 @@ export function buildIcs(event: CalendarEventInput): string {
     .filter(Boolean)
     .join(", ");
 
+  const allDay = event.all_day === true;
+  const dtStart = allDay
+    ? `DTSTART;VALUE=DATE:${toIcsDate(start)}`
+    : `DTSTART:${toIcsUtc(start)}`;
+  const dtEnd = allDay
+    ? `DTEND;VALUE=DATE:${toIcsDate(end)}`
+    : `DTEND:${toIcsUtc(end)}`;
+
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -67,8 +86,8 @@ export function buildIcs(event: CalendarEventInput): string {
     "BEGIN:VEVENT",
     `UID:${event.id}@overdrive-radar`,
     `DTSTAMP:${toIcsUtc(new Date())}`,
-    `DTSTART:${toIcsUtc(start)}`,
-    `DTEND:${toIcsUtc(end)}`,
+    dtStart,
+    dtEnd,
     `SUMMARY:${escapeIcsText(event.title)}`,
   ];
 
@@ -78,7 +97,7 @@ export function buildIcs(event: CalendarEventInput): string {
   if (location) {
     lines.push(`LOCATION:${escapeIcsText(location)}`);
   }
-  if (event.timezone) {
+  if (event.timezone && !allDay) {
     lines.push(`X-WR-TIMEZONE:${escapeIcsText(event.timezone)}`);
   }
 

@@ -30,7 +30,7 @@ export async function syncAllActiveSources(
   const { data: sources, error } = await deps.client
     .from("sources")
     .select(
-      "id,name,experience,adapter_type,feed_url,active,default_category_overdrive,default_category_event_discovery"
+      "id,name,experience,adapter_type,feed_url,active,default_category_overdrive,default_category_event_discovery,geocode_context,geocode_override,location_overrides,publication_policy"
     )
     .eq("active", true);
 
@@ -97,7 +97,11 @@ export async function syncOneSource(
         });
       }
 
-      event = await ensureCoordinates(event, geocodeCache);
+      event = await ensureCoordinates(event, geocodeCache, {
+        geocodeContext: source.geocode_context,
+        geocodeOverride: source.geocode_override,
+        locationOverrides: source.location_overrides,
+      });
 
       const { data: existing } = await client
         .from("events")

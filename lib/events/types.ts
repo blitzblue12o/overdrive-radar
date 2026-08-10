@@ -1,4 +1,5 @@
 import type { ExperienceId } from "@/lib/config/experiences";
+import { deriveAllDayFromMetadata } from "@/lib/events/occurrence";
 
 export interface BBox {
   minLng: number;
@@ -30,6 +31,10 @@ export interface EventRecord {
   event_status: string;
   publication_status: string;
   moderation_status: string;
+  /** Present on RPC / select paths; used to derive `all_day`. */
+  source_metadata?: Record<string, unknown> | null;
+  /** Derived from ICS VALUE=DATE metadata — not a DB column. */
+  all_day?: boolean | null;
 }
 
 export type EventFeatureProperties = {
@@ -48,6 +53,13 @@ export type EventFeatureProperties = {
   description: string | null;
   source_url: string | null;
   timezone: string | null;
+  /** Authoritative all-day (ICS DATE) — never inferred from noon timestamps alone. */
+  all_day?: boolean | null;
+  /**
+   * Stable source identity for presentation-only recurrence fingerprinting
+   * (typically source_metadata.source_name). Not a series id.
+   */
+  source_key?: string | null;
 };
 
 export type EventFeature = GeoJSON.Feature<
@@ -60,11 +72,24 @@ export type EventFeatureCollection = GeoJSON.FeatureCollection<
   EventFeatureProperties
 >;
 
+export function resolveEventAllDay(event: {
+  all_day?: boolean | null;
+  source_metadata?: Record<string, unknown> | null;
+}): boolean {
+  return event.all_day === true || deriveAllDayFromMetadata(event.source_metadata);
+}
+
 export function eventToFeature(event: EventRecord): EventFeature {
   const category =
     event.experience === "overdrive"
       ? event.overdrive_category
       : event.event_discovery_category;
+  const allDay = resolveEventAllDay(event);
+  const sourceName = event.source_metadata?.source_name;
+  const sourceKey =
+    typeof sourceName === "string" && sourceName.trim()
+      ? sourceName.trim()
+      : null;
 
   return {
     type: "Feature",
@@ -91,6 +116,8 @@ export function eventToFeature(event: EventRecord): EventFeature {
       description: event.description,
       source_url: event.source_url,
       timezone: event.timezone,
+      all_day: allDay,
+      source_key: sourceKey,
     },
   };
 }

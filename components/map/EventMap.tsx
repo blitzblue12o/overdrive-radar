@@ -14,8 +14,17 @@ import {
   EVENT_SELECTED_LAYER_ID,
   EVENT_SELECTED_RING_LAYER_ID,
 } from "@/components/map/EventMarker";
-import { consumeViewportSuppress } from "@/lib/events/filters";
+import {
+  armViewportSuppressUntilMoveEnd,
+  bboxFromCenter,
+  isViewportFetchSuppressed,
+} from "@/lib/events/filters";
 import type { BBox, EventFeatureCollection } from "@/lib/events/types";
+import {
+  leafEventFromFeature,
+  resolveClusterClickAction,
+  type ClusterLeafEvent,
+} from "@/lib/map/cluster-interaction";
 import { cn } from "@/lib/utils";
 
 const SOURCE_ID = "events";
@@ -79,7 +88,7 @@ function fitMapToFeatures(
   const padY = Math.max(8, Math.min(72, Math.floor(el.clientHeight * 0.12)));
   const reduced = prefersReducedMotion();
 
-  suppressViewportFetchRef.current = true;
+  armViewportSuppressUntilMoveEnd(suppressViewportFetchRef, map);
   try {
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
@@ -106,6 +115,43 @@ function fitMapToFeatures(
   }
 }
 
+/** Fit camera to the active search radius (viewport UX — not a new search). */
+function fitMapToSearchArea(
+  map: mapboxgl.Map,
+  center: { lat: number; lng: number },
+  radiusMiles: number,
+  suppressViewportFetchRef: React.MutableRefObject<boolean>
+): boolean {
+  if (!isValidLngLat(center.lng, center.lat) || !isMapReadyForCamera(map)) {
+    return false;
+  }
+  const miles = Number.isFinite(radiusMiles) && radiusMiles > 0 ? radiusMiles : 25;
+  const box = bboxFromCenter(center, miles);
+  const el = map.getContainer();
+  const padX = Math.max(8, Math.min(48, Math.floor(el.clientWidth * 0.1)));
+  const padY = Math.max(8, Math.min(72, Math.floor(el.clientHeight * 0.1)));
+
+  armViewportSuppressUntilMoveEnd(suppressViewportFetchRef, map);
+  try {
+    map.fitBounds(
+      [
+        [box.minLng, box.minLat],
+        [box.maxLng, box.maxLat],
+      ],
+      {
+        padding: { top: padY, bottom: padY, left: padX, right: padX },
+        maxZoom: 12.5,
+        duration: prefersReducedMotion() ? 0 : 700,
+        essential: true,
+      }
+    );
+    return true;
+  } catch {
+    suppressViewportFetchRef.current = false;
+    return false;
+  }
+}
+
 export function EventMap({
   data,
   selectedEventId,
@@ -115,7 +161,12 @@ export function EventMap({
   fitResultsOnDataRef,
   onBackgroundClick,
   onUserLocation,
+  onMapCenterChange,
+  onClusterPick,
   centerTarget,
+  searchAreaCenter,
+  searchAreaRadiusMiles = 25,
+  searchRecenterKey = 0,
   geolocateRequestKey = 0,
   className,
   controlsPosition = "top-right",
@@ -135,8 +186,20 @@ export function EventMap({
   /** Empty-map click (not a marker/cluster). */
   onBackgroundClick?: () => void;
   onUserLocation?: (coords: { lat: number; lng: number } | null) => void;
+  /** Map camera center after any moveend (including suppressed) — presentation only. */
+  onMapCenterChange?: (center: { lat: number; lng: number }) => void;
+  /**
+   * Colocated / non-separating cluster leaves — never pass a single arbitrary event id.
+   * Caller shows a selector; must not open EventDetail until the user picks a leaf.
+   */
+  onClusterPick?: (events: ClusterLeafEvent[]) => void;
   /** Programmatic recenter for manual city/ZIP (uses suppressViewportFetchRef). */
   centerTarget?: { lat: number; lng: number } | null;
+  /** Active search anchor for chip recenter (not mutated by pan). */
+  searchAreaCenter?: { lat: number; lng: number } | null;
+  searchAreaRadiusMiles?: number;
+  /** Increment to fly/fit back to searchAreaCenter without changing search state. */
+  searchRecenterKey?: number;
   /** Increment to trigger Mapbox GeolocateControl.trigger(). */
   geolocateRequestKey?: number;
   className?: string;
@@ -151,16 +214,21 @@ export function EventMap({
   const onSelectEventRef = useRef(onSelectEvent);
   const onBackgroundClickRef = useRef(onBackgroundClick);
   const onUserLocationRef = useRef(onUserLocation);
+  const onMapCenterChangeRef = useRef(onMapCenterChange);
+  const onClusterPickRef = useRef(onClusterPick);
   const selectedRef = useRef(selectedEventId);
   const dataRef = useRef(data);
   const flewToSelectionRef = useRef<string | null>(null);
   const flewToCenterKeyRef = useRef<string | null>(null);
   const lastGeolocateRequestRef = useRef(0);
+  const lastSearchRecenterKeyRef = useRef(0);
 
   onViewportChangeRef.current = onViewportChange;
   onSelectEventRef.current = onSelectEvent;
   onBackgroundClickRef.current = onBackgroundClick;
   onUserLocationRef.current = onUserLocation;
+  onMapCenterChangeRef.current = onMapCenterChange;
+  onClusterPickRef.current = onClusterPick;
   selectedRef.current = selectedEventId;
   dataRef.current = data;
 
@@ -201,8 +269,21 @@ export function EventMap({
       });
     });
 
+    const reportMapCenter = () => {
+      try {
+        const c = map.getCenter();
+        if (!isValidLngLat(c.lng, c.lat)) return;
+        onMapCenterChangeRef.current?.({ lat: c.lat, lng: c.lng });
+      } catch {
+        // Map may be mid-teardown.
+      }
+    };
+
     const emitViewport = () => {
-      if (consumeViewportSuppress(suppressViewportFetchRef)) return;
+      reportMapCenter();
+      // Peek only — clearing is owned by armViewportSuppressUntilMoveEnd so a
+      // single flyTo/easeTo that emits multiple moveends cannot refetch.
+      if (isViewportFetchSuppressed(suppressViewportFetchRef)) return;
       const bounds = map.getBounds();
       if (!bounds) return;
       onViewportChangeRef.current({
@@ -331,64 +412,153 @@ export function EventMap({
 
     map.on("moveend", emitViewport);
 
-    map.on("click", CLUSTER_LAYER, (e) => {
-      e.originalEvent.stopPropagation();
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [CLUSTER_LAYER],
+    const openClusterLeafPicker = (
+      source: mapboxgl.GeoJSONSource,
+      clusterId: number,
+      pointCount: number
+    ) => {
+      const limit = Math.max(1, Math.min(pointCount || 50, 50));
+      source.getClusterLeaves(clusterId, limit, 0, (err, leaves) => {
+        if (err || !leaves?.length) return;
+        const events: ClusterLeafEvent[] = [];
+        const seen = new Set<string>();
+        for (const leaf of leaves) {
+          const item = leafEventFromFeature(leaf);
+          if (!item || seen.has(item.id)) continue;
+          seen.add(item.id);
+          events.push(item);
+        }
+        if (events.length === 0) return;
+        if (events.length === 1) {
+          // Degenerate cluster of one — open that occurrence directly.
+          onSelectEventRef.current(events[0].id);
+          return;
+        }
+        onClusterPickRef.current?.(events);
       });
-      const feature = features[0];
-      const clusterId = feature?.properties?.cluster_id;
+    };
+
+    // Mapbox may fire multiple layer click handlers for one gesture (circle + count).
+    // Guard so expand/pick runs once per interaction.
+    let clusterClickGuard = false;
+    const handleClusterFeatureClick = (feature: mapboxgl.MapboxGeoJSONFeature) => {
+      if (clusterClickGuard) return;
+      clusterClickGuard = true;
+      requestAnimationFrame(() => {
+        clusterClickGuard = false;
+      });
+
+      const clusterId = feature.properties?.cluster_id;
+      const pointCount = Number(feature.properties?.point_count ?? 0);
       const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
       if (clusterId == null) return;
+
       source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        const action = resolveClusterClickAction({
+          currentZoom: map.getZoom(),
+          expansionZoom: err ? null : zoom,
+        });
+
+        if (action === "pick") {
+          openClusterLeafPicker(source, clusterId, pointCount);
+          return;
+        }
+
         if (
-          err ||
-          zoom == null ||
-          !Number.isFinite(zoom) ||
           !feature.geometry ||
           feature.geometry.type !== "Point" ||
           !isMapReadyForCamera(map)
         ) {
+          openClusterLeafPicker(source, clusterId, pointCount);
           return;
         }
         const coords = feature.geometry.coordinates as [number, number];
-        if (!isValidLngLat(coords[0], coords[1])) return;
-        suppressViewportFetchRef.current = true;
+        if (!isValidLngLat(coords[0], coords[1])) {
+          openClusterLeafPicker(source, clusterId, pointCount);
+          return;
+        }
+        armViewportSuppressUntilMoveEnd(suppressViewportFetchRef, map);
         try {
           map.easeTo({
             center: coords,
-            zoom: Math.min(Math.max(zoom, 0), 22),
+            zoom: Math.min(Math.max(zoom as number, 0), 22),
+            duration: prefersReducedMotion() ? 0 : 450,
           });
         } catch {
           suppressViewportFetchRef.current = false;
+          openClusterLeafPicker(source, clusterId, pointCount);
         }
       });
+    };
+
+    const handleUnclusteredPointClick = (point: mapboxgl.PointLike) => {
+      const layers = [POINT_LAYER, SELECTED_LAYER, SELECTED_RING_LAYER].filter(
+        (id) => map.getLayer(id)
+      );
+      const hits = map.queryRenderedFeatures(point, { layers });
+      const events: ClusterLeafEvent[] = [];
+      const seen = new Set<string>();
+      for (const hit of hits) {
+        const item = leafEventFromFeature(hit);
+        if (!item || seen.has(item.id)) continue;
+        seen.add(item.id);
+        events.push(item);
+      }
+      if (events.length === 0) return;
+      if (events.length === 1) {
+        onSelectEventRef.current(events[0].id);
+        return;
+      }
+      // Stacked unclustered markers at the same click target — picker, not arbitrary.
+      onClusterPickRef.current?.(events);
+    };
+
+    // Prefer cluster handling; never fall through into single-event selection.
+    map.on("click", CLUSTER_LAYER, (e) => {
+      e.originalEvent.stopPropagation();
+      const feature =
+        e.features?.[0] ??
+        map.queryRenderedFeatures(e.point, { layers: [CLUSTER_LAYER] })[0];
+      if (!feature) return;
+      handleClusterFeatureClick(feature);
+    });
+
+    map.on("click", CLUSTER_COUNT_LAYER, (e) => {
+      e.originalEvent.stopPropagation();
+      const feature = map.queryRenderedFeatures(e.point, {
+        layers: [CLUSTER_LAYER],
+      })[0];
+      if (!feature) return;
+      handleClusterFeatureClick(feature);
     });
 
     map.on("click", POINT_LAYER, (e) => {
       e.originalEvent.stopPropagation();
-      const feature = e.features?.[0];
-      const id = feature?.properties?.id as string | undefined;
-      if (id) onSelectEventRef.current(id);
+      // If a cluster is also under the cursor, cluster wins.
+      const clusterHit = map.queryRenderedFeatures(e.point, {
+        layers: [CLUSTER_LAYER],
+      })[0];
+      if (clusterHit) {
+        handleClusterFeatureClick(clusterHit);
+        return;
+      }
+      handleUnclusteredPointClick(e.point);
     });
 
     map.on("click", SELECTED_LAYER, (e) => {
       e.originalEvent.stopPropagation();
-      const feature = e.features?.[0];
-      const id = feature?.properties?.id as string | undefined;
-      if (id) onSelectEventRef.current(id);
+      handleUnclusteredPointClick(e.point);
     });
 
     map.on("click", SELECTED_RING_LAYER, (e) => {
       e.originalEvent.stopPropagation();
-      const feature = e.features?.[0];
-      const id = feature?.properties?.id as string | undefined;
-      if (id) onSelectEventRef.current(id);
+      handleUnclusteredPointClick(e.point);
     });
 
     map.on("click", (e) => {
       const layers = [
         CLUSTER_LAYER,
+        CLUSTER_COUNT_LAYER,
         POINT_LAYER,
         SELECTED_LAYER,
         SELECTED_RING_LAYER,
@@ -397,6 +567,13 @@ export function EventMap({
       if (hits.length === 0) {
         onBackgroundClickRef.current?.();
       }
+    });
+
+    map.on("mouseenter", CLUSTER_COUNT_LAYER, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", CLUSTER_COUNT_LAYER, () => {
+      map.getCanvas().style.cursor = "";
     });
 
     let hoveredId: string | number | undefined;
@@ -453,7 +630,7 @@ export function EventMap({
     if (flewToCenterKeyRef.current === key) return;
     flewToCenterKeyRef.current = key;
 
-    suppressViewportFetchRef.current = true;
+    armViewportSuppressUntilMoveEnd(suppressViewportFetchRef, map);
     try {
       const zoom = map.getZoom();
       map.flyTo({
@@ -479,6 +656,26 @@ export function EventMap({
       // Geolocate may fail if permission denied; leave map as-is.
     }
   }, [geolocateRequestKey]);
+
+  // Search-area chip recenter — viewport only; search URL/params unchanged.
+  useEffect(() => {
+    if (!searchRecenterKey) return;
+    if (lastSearchRecenterKeyRef.current === searchRecenterKey) return;
+    lastSearchRecenterKeyRef.current = searchRecenterKey;
+    const map = mapRef.current;
+    if (!map || !searchAreaCenter) return;
+    fitMapToSearchArea(
+      map,
+      searchAreaCenter,
+      searchAreaRadiusMiles,
+      suppressViewportFetchRef
+    );
+  }, [
+    searchRecenterKey,
+    searchAreaCenter,
+    searchAreaRadiusMiles,
+    suppressViewportFetchRef,
+  ]);
 
   // Keep GeoJSON source in sync; optionally fit camera when flagged (filter/search/initial).
   useEffect(() => {
@@ -547,7 +744,7 @@ export function EventMap({
     if (!isValidLngLat(lng, lat) || !isMapReadyForCamera(map)) return;
 
     flewToSelectionRef.current = selectedEventId;
-    suppressViewportFetchRef.current = true;
+    armViewportSuppressUntilMoveEnd(suppressViewportFetchRef, map);
     try {
       const zoom = map.getZoom();
       map.flyTo({

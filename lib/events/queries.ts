@@ -1,6 +1,11 @@
 import type { ExperienceId } from "@/lib/config/experiences";
 import { bboxFromCenter, intersectBbox } from "@/lib/events/filters";
-import type { BBox, EventRecord } from "@/lib/events/types";
+import { eventOverlapsDateRange } from "@/lib/events/occurrence";
+import {
+  resolveEventAllDay,
+  type BBox,
+  type EventRecord,
+} from "@/lib/events/types";
 
 export const EVENT_SELECT = [
   "id",
@@ -25,6 +30,7 @@ export const EVENT_SELECT = [
   "event_status",
   "publication_status",
   "moderation_status",
+  "source_metadata",
 ].join(", ");
 
 type ChainResult = PromiseLike<{
@@ -75,12 +81,18 @@ function applyPostFilters(
   let next = rows.filter((row) => row.experience === experience);
 
   if (params.dateRange) {
-    const startMs = params.dateRange.start.getTime();
-    const endMs = params.dateRange.end.getTime();
-    next = next.filter((row) => {
-      const t = new Date(row.starts_at).getTime();
-      return t >= startMs && t < endMs;
-    });
+    const range = params.dateRange;
+    next = next.filter((row) =>
+      eventOverlapsDateRange(
+        {
+          starts_at: row.starts_at,
+          ends_at: row.ends_at,
+          timezone: row.timezone,
+          all_day: resolveEventAllDay(row),
+        },
+        range
+      )
+    );
   }
 
   if (params.categories && params.categories.length > 0) {
@@ -92,6 +104,43 @@ function applyPostFilters(
   }
 
   return next;
+}
+
+/** Final ranked-text cap — applied only AFTER date/category filters. */
+export const TEXT_SEARCH_RESULT_LIMIT = 50;
+
+function textMatchScore(row: EventRecord, query: string): number {
+  const q = query.toLowerCase();
+  const title = row.title.toLowerCase();
+  const venue = (row.venue_name ?? "").toLowerCase();
+  if (!q) return 0;
+  if (title === q || venue === q) return 1;
+  if (title.includes(q) || venue.includes(q)) return 0.6;
+  let shared = 0;
+  for (let i = 0; i < q.length; i++) {
+    const ch = q.charAt(i);
+    if (title.includes(ch) || venue.includes(ch)) shared += 1;
+  }
+  return shared / Math.max(q.length, 1);
+}
+
+/** In-process text match used when post-filters must run before any result cap. */
+export function filterEventsByTextQuery(
+  rows: EventRecord[],
+  query: string
+): EventRecord[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows
+    .map((row) => ({ row, score: textMatchScore(row, q) }))
+    .filter(({ score }) => score > 0.2)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (
+        new Date(a.row.starts_at).getTime() - new Date(b.row.starts_at).getTime()
+      );
+    })
+    .map(({ row }) => row);
 }
 
 function resolveQueryBbox(params: GetEventsParams): BBox {
@@ -109,7 +158,12 @@ function resolveQueryBbox(params: GetEventsParams): BBox {
 
 /**
  * Unified discovery query. `experience` is required on every call.
- * Uses search_events when any filter is active; otherwise get_events_in_viewport.
+ *
+ * Important: `search_events` applies LIMIT 50 before client post-filters.
+ * Distance / date / category paths therefore use the unscoped viewport RPC
+ * (bbox already clipped to radius) and apply filters before any result cap.
+ * Text search alone may still use ranked `search_events`; text+date/category
+ * uses viewport → text match → post-filters → TEXT_SEARCH_RESULT_LIMIT.
  */
 export async function getEvents(
   experience: ExperienceId,
@@ -121,20 +175,30 @@ export async function getEvents(
   }
 
   const query = params.query?.trim() ?? "";
-  const filtersActive = Boolean(
-    query ||
-      params.dateRange ||
-      (params.categories && params.categories.length > 0) ||
-      params.distanceMiles
+  const hasTextQuery = Boolean(query);
+  const hasPostFilters = Boolean(
+    params.dateRange || (params.categories && params.categories.length > 0)
   );
-
   const bbox = resolveQueryBbox(params);
 
-  if (!filtersActive) {
+  // No text query: never hit search_events (its LIMIT 50 is premature for
+  // distance/date/category). Viewport has no result cap.
+  if (!hasTextQuery) {
     const rows = await getEventsInViewport(experience, bbox, client);
     return applyPostFilters(rows, experience, params);
   }
 
+  // Text + date/category: filter completely, then cap ranked matches.
+  if (hasPostFilters) {
+    const rows = await getEventsInViewport(experience, bbox, client);
+    const matched = filterEventsByTextQuery(rows, query);
+    return applyPostFilters(matched, experience, params).slice(
+      0,
+      TEXT_SEARCH_RESULT_LIMIT
+    );
+  }
+
+  // Text-only: ranked RPC limit is acceptable (no post-filter loss).
   const rows = await searchEvents(experience, query, bbox, client);
   return applyPostFilters(rows, experience, params);
 }

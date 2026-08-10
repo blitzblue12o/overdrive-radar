@@ -1,31 +1,33 @@
+import {
+  formatOccurrenceLabel,
+  type OccurrenceInput,
+} from "@/lib/events/occurrence";
+
+/**
+ * Compact occurrence label for lists/cards.
+ * Prefer passing `all_day` when known (ICS VALUE=DATE).
+ */
 export function formatEventDateTime(
   startsAt: string,
   endsAt?: string | null,
-  timeZone?: string | null
+  timeZone?: string | null,
+  allDay?: boolean | null
 ): string {
-  const start = new Date(startsAt);
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+  const input: OccurrenceInput = {
+    starts_at: startsAt,
+    ends_at: endsAt,
+    timezone: timeZone,
+    all_day: allDay,
   };
-  if (timeZone) options.timeZone = timeZone;
-
-  const startLabel = new Intl.DateTimeFormat("en-US", options).format(start);
-
-  if (!endsAt) return startLabel;
-
-  const end = new Date(endsAt);
-  const endLabel = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    ...(timeZone ? { timeZone } : {}),
-  }).format(end);
-
-  return `${startLabel} – ${endLabel}`;
+  return formatOccurrenceLabel(input);
 }
+
+export {
+  formatOccurrenceLabel,
+  formatOccurrenceDetailLines,
+  describeOccurrence,
+  getEventTemporalDisplay,
+} from "@/lib/events/occurrence";
 
 export function formatCategoryLabel(
   category: string | null | undefined,

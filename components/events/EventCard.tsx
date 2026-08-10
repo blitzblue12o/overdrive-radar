@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 import { useExperience } from "@/components/experience/ExperienceProvider";
 import { FallbackArt } from "@/components/events/FallbackArt";
 import { PriceBadge } from "@/components/events/PriceBadge";
-import { formatCategoryLabel, formatEventDateTime } from "@/lib/events/format";
+import {
+  cardVenueLabel,
+  normalizeDisplayText,
+} from "@/lib/events/display-text";
+import { formatCategoryLabel, formatOccurrenceLabel } from "@/lib/events/format";
 import type { EventFeatureProperties } from "@/lib/events/types";
 
 export type EventCardData = EventFeatureProperties & {
@@ -17,13 +21,18 @@ export function EventCard({
   selected,
   onSelect,
   compact = false,
+  recurrenceLabel,
 }: {
   event: EventCardData;
   selected?: boolean;
   onSelect?: (id: string) => void;
   compact?: boolean;
+  /** Presentation-only cadence hint (Weekly / Every 2 weeks / Multiple dates). */
+  recurrenceLabel?: string | null;
 }) {
   const experience = useExperience();
+  const title = normalizeDisplayText(event.title) ?? event.title;
+  const venueLabel = cardVenueLabel(event.venue_name, event.address);
   const categoryLabel = formatCategoryLabel(
     event.category,
     experience.categories
@@ -34,7 +43,7 @@ export function EventCard({
       type="button"
       onClick={() => onSelect?.(event.id)}
       aria-pressed={selected}
-      aria-label={`${event.title}, ${categoryLabel}`}
+      aria-label={`${title}, ${categoryLabel}`}
       className={cn(
         "w-full text-left flex gap-3 rounded-lg border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
         selected
@@ -58,20 +67,35 @@ export function EventCard({
         ) : (
           <FallbackArt
             category={event.category}
-            title={event.title}
+            title={title}
             className="h-full w-full"
           />
         )}
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate font-medium leading-tight">{event.title}</p>
+          <p className="truncate font-medium leading-tight">{title}</p>
           <PriceBadge event={event} />
         </div>
         <p className="text-xs text-[var(--muted-foreground)]">{categoryLabel}</p>
         <p className="text-xs text-[var(--muted-foreground)] truncate">
-          {formatEventDateTime(event.starts_at, event.ends_at, event.timezone)}
+          {formatOccurrenceLabel({
+            starts_at: event.starts_at,
+            ends_at: event.ends_at,
+            timezone: event.timezone,
+            all_day: event.all_day,
+          })}
         </p>
+        {venueLabel ? (
+          <p className="text-[11px] text-[var(--muted-foreground)]/80 truncate">
+            {venueLabel}
+          </p>
+        ) : null}
+        {recurrenceLabel ? (
+          <p className="text-[11px] text-[var(--muted-foreground)]/80">
+            {recurrenceLabel}
+          </p>
+        ) : null}
       </div>
     </button>
   );

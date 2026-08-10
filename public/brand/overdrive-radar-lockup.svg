@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 240" role="img" aria-label="Overdrive Radar">
+  <defs>
+    <radialGradient id="sweep" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5EB6FF" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#5EB6FF" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#5EB6FF" stop-opacity="0.04"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Icon -->
+  <g transform="translate(16,16)">
+    <rect width="208" height="208" rx="46" fill="#0B1424"/>
+    <g fill="none" stroke="#4A6F9A" stroke-width="3.2" stroke-opacity="0.85" transform="translate(0,0)">
+      <circle cx="104" cy="104" r="29"/>
+      <circle cx="104" cy="104" r="50"/>
+      <circle cx="104" cy="104" r="71"/>
+    </g>
+    <g stroke="#4A6F9A" stroke-width="2.8" stroke-linecap="round" stroke-opacity="0.9">
+      <line x1="104" y1="26" x2="104" y2="182"/>
+      <line x1="26" y1="104" x2="182" y2="104"/>
+      <line x1="104" y1="20" x2="104" y2="28"/>
+      <line x1="104" y1="180" x2="104" y2="188"/>
+      <line x1="20" y1="104" x2="28" y2="104"/>
+      <line x1="180" y1="104" x2="188" y2="104"/>
+    </g>
+    <path fill="url(#sweep)" d="M104 104 L104 30 A74 74 0 0 1 168 72 Z"/>
+    <line x1="104" y1="104" x2="163" y2="68" stroke="#5EB6FF" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="104" cy="104" r="7.5" fill="#5EB6FF"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g font-family="Arial Black, Helvetica Neue, Arial, sans-serif" letter-spacing="0.04em">
+    <text x="260" y="118" fill="#0B1424" font-size="72" font-weight="800">OVERDRIVE</text>
+    <text x="260" y="188" fill="#5EB6FF" font-size="72" font-weight="500" letter-spacing="0.12em">RADAR</text>
+  </g>
+</svg>

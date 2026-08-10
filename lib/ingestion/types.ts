@@ -1,6 +1,6 @@
 import type { ExperienceId } from "@/lib/config/experiences";
 
-export type AdapterType = "ics" | "rss" | "motorsportreg";
+export type AdapterType = "ics" | "rss" | "motorsportreg" | "librarycalendar";
 
 export type OverdriveCategory =
   | "car_meet"
@@ -47,6 +47,28 @@ export type SourceRecord = {
   active: boolean;
   default_category_overdrive: OverdriveCategory | null;
   default_category_event_discovery: EventDiscoveryCategory | null;
+  /** Optional locality hint for Mapbox queries (not persisted on events). */
+  geocode_context?: string | null;
+  /** Optional canonical facility address used as the Mapbox query target. */
+  geocode_override?: string | null;
+  /**
+   * Optional declarative facility map for multi-campus feeds.
+   * Matched against venue/address (case-insensitive substring); first match wins.
+   * Takes precedence over geocode_override when matched.
+   */
+  location_overrides?: LocationOverride[] | null;
+  /** EventDiscovery publication trust: probation (default) | trusted. */
+  publication_policy?: "probation" | "trusted" | null;
+};
+
+/** Source-configured facility pin / geocode target (not source-name branched). */
+export type LocationOverride = {
+  /** Substring matched against venue_name / address (case-insensitive). */
+  match: string;
+  /** Authoritative street address used for Mapbox when lat/lng omitted. */
+  address: string;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type NormalizedEventInsert = {
@@ -62,7 +84,7 @@ export type NormalizedEventInsert = {
   address: string | null;
   latitude: number | null;
   longitude: number | null;
-  source_type: "ics" | "rss" | "motorsportreg";
+  source_type: AdapterType;
   source_id: string;
   source_url: string | null;
   source_metadata: Record<string, unknown>;

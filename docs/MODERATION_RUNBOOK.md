@@ -87,6 +87,40 @@ from sources
 order by experience, name;
 ```
 
+## 7. M1 publication-policy dry-run (read-only)
+
+Evaluates EventDiscovery ICS `pending`/`draft` rows with the deterministic
+eligibility policy. Does **not** approve, publish, reject, or otherwise mutate
+moderation/publication state.
+
+```bash
+npx tsx --tsconfig tsconfig.json scripts/dry-run-publication-policy.ts
+npx tsx --tsconfig tsconfig.json scripts/dry-run-publication-policy.ts --json=tmp/m1-dry-run.json
+```
+
+`eligible` here means event-level deterministic rules pass — **not** that the
+event is authorized for auto-publish (source trust is M2).
+
+## 8. M2 controlled trusted-source auto-publication (manual only)
+
+Publishes **only** from sources with `publication_policy = 'trusted'`, and only
+events the M1 evaluator marks `eligible`. Hard M2 ceiling: `--limit` ≤ 10.
+Preview is the default (zero writes); mutation requires `--execute`.
+
+```bash
+# Preview (required before execute)
+npx tsx --tsconfig tsconfig.json scripts/publish-eligible-events.ts \
+  --source="City of Poway — Community Events" --limit=10
+
+# Execute (only after preview looks correct)
+npx tsx --tsconfig tsconfig.json scripts/publish-eligible-events.ts \
+  --source="City of Poway — Community Events" --limit=10 --execute
+```
+
+Automated rows set `decision_source = 'automation'`. Human/manual decisions use
+`decision_source = 'manual'` (including the pre-M2 published cohort backfill).
+Normal sync must not overwrite moderation/publication/decision provenance.
+
 ## Rules
 
 - Never auto-approve from the sync job — this runbook is intentional human review.

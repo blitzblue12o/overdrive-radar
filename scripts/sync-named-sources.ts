@@ -24,8 +24,12 @@ const NAMES = (
     "City of Del Mar — Community Calendar",
     "City of Imperial Beach — Events Calendar",
     "City of La Mesa — Community Events",
-    "City of Westlake Village — Main Calendar",
-    "City of Malibu — Special Events",
+    "Thousand Oaks Library — Events Calendar",
+    "City of Ventura — Parks & Recreation Events",
+    "City of Moorpark — Community Events",
+    "City of Port Hueneme — Recreation & Community Services",
+    "City of Westlake Village — Special Events",
+    "Simi Valley Public Library — Events",
   ]
 );
 
@@ -43,7 +47,7 @@ async function main() {
   const { data, error } = await client
     .from("sources")
     .select(
-      "id,name,experience,adapter_type,feed_url,active,default_category_overdrive,default_category_event_discovery"
+      "id,name,experience,adapter_type,feed_url,active,default_category_overdrive,default_category_event_discovery,geocode_context,geocode_override,location_overrides,publication_policy"
     )
     .in("name", NAMES);
 

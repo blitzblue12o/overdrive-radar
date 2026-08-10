@@ -23,13 +23,18 @@ import {
   MobileBottomSheet,
   type SheetState,
 } from "@/components/layout/MobileBottomSheet";
+import { SearchAreaChip } from "@/components/location/SearchAreaChip";
+import { ClusterEventPicker } from "@/components/map/ClusterEventPicker";
 import type { ExperienceConfig } from "@/lib/config/experiences";
 import type { BBox, EventFeatureCollection } from "@/lib/events/types";
 import { featureToEventLike } from "@/lib/events/types";
+import { buildEventsApiSearchParams } from "@/lib/events/discovery-fetch";
 import {
   bboxFromCenter,
   countActiveUiFilters,
   hasActiveUiFilters,
+  isMapAwayFromSearchArea,
+  locationDistanceContextLabel,
   locationNearLabel,
   nextDistanceTier,
   parseCategoryParam,
@@ -37,7 +42,11 @@ import {
   parseLocationFromSearchParams,
   setCurrentLocationParams,
 } from "@/lib/events/filters";
-import { reverseGeocodeEphemeral } from "@/lib/events/geocode-place";
+import {
+  shouldClearClusterPicker,
+  type ClusterLeafEvent,
+} from "@/lib/map/cluster-interaction";
+import { buildRecurrenceById } from "@/lib/events/recurrence";
 import { cn } from "@/lib/utils";
 
 const EventMap = dynamic(
@@ -96,6 +105,19 @@ function ExperienceApp() {
     features: [],
   });
   const [sheetState, setSheetState] = useState<SheetState>("collapsed");
+  /** Mobile Filters sheet (Filters button only — location chip recenters the map). */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  /** Presentation-only map camera center — does not mutate search URL/location. */
+  const [mapViewCenter, setMapViewCenter] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  /** Increment to request search-area fitBounds (viewport UX only). */
+  const [searchRecenterKey, setSearchRecenterKey] = useState(0);
+  /** Map-cluster leaf picker — presentation only; not a selected event. */
+  const [clusterPickerEvents, setClusterPickerEvents] = useState<
+    ClusterLeafEvent[] | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bbox, setBbox] = useState<BBox | null>(null);
@@ -117,7 +139,27 @@ function ExperienceApp() {
   }, [isDesktop]);
   const abortRef = useRef<AbortController | null>(null);
   const filterKeyRef = useRef<string | null>(null);
+  /** Avoid skeleton flash (and scroll clamp) when refreshing over existing results. */
+  const hasEventsRef = useRef(false);
   const eventFromUrlRef = useRef<string | null>(null);
+  const searchParamsRef = useRef<URLSearchParams>(
+    new URLSearchParams(searchParams.toString())
+  );
+  const lastWrittenQsRef = useRef<string | null>(null);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
+  // Sync from the router, but do not clobber a local write that hasn't landed yet
+  // (prevents stale concurrent replaces from restoring a previous searched loc).
+  const routerQs = searchParams.toString();
+  if (lastWrittenQsRef.current != null) {
+    if (routerQs === lastWrittenQsRef.current) {
+      lastWrittenQsRef.current = null;
+      searchParamsRef.current = new URLSearchParams(routerQs);
+    }
+  } else {
+    searchParamsRef.current = new URLSearchParams(routerQs);
+  }
 
   const q = searchParams.get("q") ?? "";
   const date = searchParams.get("date");
@@ -151,6 +193,19 @@ function ExperienceApp() {
   });
 
   const distanceMiles = parseDistanceMiles(distance) ?? 25;
+  /** Mobile header context — same location + distance as the discovery query. */
+  const locationContextLabel = locationDistanceContextLabel(
+    location,
+    distanceMiles
+  );
+  const mapAwayFromSearch = Boolean(
+    resolvedCenter &&
+      mapViewCenter &&
+      isMapAwayFromSearchArea(mapViewCenter, resolvedCenter, distanceMiles)
+  );
+  const requestSearchRecenter = useCallback(() => {
+    setSearchRecenterKey((n) => n + 1);
+  }, []);
   const activeFilterCount = countActiveUiFilters({
     query: q,
     date,
@@ -171,29 +226,51 @@ function ExperienceApp() {
     [features]
   );
 
+  // Recurrence is presentation-only and MUST be derived after discovery filtering.
+  const recurrenceById = useMemo(() => buildRecurrenceById(events), [events]);
+  const recurrenceLabelById = useMemo(() => {
+    const labels = new Map<string, string>();
+    recurrenceById.forEach((presentation, id) => {
+      labels.set(id, presentation.label);
+    });
+    return labels;
+  }, [recurrenceById]);
+
   const selectedEvent = useMemo(
     () => events.find((e) => e.id === selectedEventId) ?? null,
     [events, selectedEventId]
   );
+  const selectedRecurrence = selectedEventId
+    ? recurrenceById.get(selectedEventId) ?? null
+    : null;
 
   const replaceParams = useCallback(
     (mutate: (params: URLSearchParams) => void) => {
-      const params = new URLSearchParams(searchParams.toString());
+      // Always start from the latest intended params (ref), not a stale render closure.
+      const params = new URLSearchParams(searchParamsRef.current.toString());
       mutate(params);
+      // Publish immediately so a concurrent replace in the same tick cannot
+      // overwrite device-location with a previous searched loc.
       const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      searchParamsRef.current = params;
+      lastWrittenQsRef.current = qs;
+      const path = pathnameRef.current;
+      router.replace(qs ? `${path}?${qs}` : path, { scroll: false });
     },
-    [pathname, router, searchParams]
+    [router]
   );
 
   const pushParams = useCallback(
     (mutate: (params: URLSearchParams) => void) => {
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(searchParamsRef.current.toString());
       mutate(params);
       const qs = params.toString();
-      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      searchParamsRef.current = params;
+      lastWrittenQsRef.current = qs;
+      const path = pathnameRef.current;
+      router.push(qs ? `${path}?${qs}` : path, { scroll: false });
     },
-    [pathname, router, searchParams]
+    [router]
   );
 
   const clearFilters = useCallback(() => {
@@ -217,50 +294,14 @@ function ExperienceApp() {
       if (!coords) return;
       setUserLocation(coords);
 
-      // Persist GPS as current-location mode immediately (coords usable now).
-      // Keep an existing display label only if coords are unchanged; otherwise
-      // set a temporary label until reverse geocode finishes.
+      // Authoritative device location: clear any prior searched `loc` (e.g. Poway)
+      // in the same URL update as the new lat/lng. UI shows "Current location".
       replaceParams((params) => {
-        const prev = parseLocationFromSearchParams(params);
-        const sameCoords =
-          prev.mode === "current" &&
-          prev.lat != null &&
-          prev.lng != null &&
-          Math.abs(prev.lat - coords.lat) < 1e-5 &&
-          Math.abs(prev.lng - coords.lng) < 1e-5;
         setCurrentLocationParams(params, {
           lat: coords.lat,
           lng: coords.lng,
-          loc:
-            sameCoords && prev.displayLocation
-              ? prev.displayLocation
-              : "Current location",
         });
       });
-
-      // Reverse-geocode for display only — do not alter lat/lng.
-      void (async () => {
-        const label = await reverseGeocodeEphemeral(coords.lat, coords.lng);
-        const nextLabel = label?.trim() || "Current location";
-        replaceParams((params) => {
-          const latest = parseLocationFromSearchParams(params);
-          if (latest.mode !== "current") return;
-          if (
-            latest.lat == null ||
-            latest.lng == null ||
-            Math.abs(latest.lat - coords.lat) > 1e-5 ||
-            Math.abs(latest.lng - coords.lng) > 1e-5
-          ) {
-            return;
-          }
-          if (latest.displayLocation === nextLabel) return;
-          setCurrentLocationParams(params, {
-            lat: coords.lat,
-            lng: coords.lng,
-            loc: nextLabel,
-          });
-        });
-      })();
     },
     [replaceParams]
   );
@@ -286,14 +327,22 @@ function ExperienceApp() {
   );
 
   const closeEvent = useCallback(() => {
+    setClusterPickerEvents(null);
     if (!eventFromUrl) return;
     replaceParams((params) => {
       params.delete("event");
     });
   }, [eventFromUrl, replaceParams]);
 
+  const clearClusterPicker = useCallback(() => {
+    setClusterPickerEvents(null);
+    setSheetState((prev) => (prev === "event-detail" ? "list" : prev));
+  }, []);
+
   const handleSelectEvent = useCallback(
     (id: string | null) => {
+      // List / direct selection never opens the cluster picker.
+      setClusterPickerEvents(null);
       if (!id) {
         closeEvent();
         return;
@@ -303,14 +352,30 @@ function ExperienceApp() {
     [closeEvent, openEvent]
   );
 
+  const handleClusterPick = useCallback((leaves: ClusterLeafEvent[]) => {
+    // Do not set selectedEvent / ?event= until the user chooses a leaf.
+    setClusterPickerEvents(leaves);
+    setSheetState("event-detail");
+  }, []);
+
+  const handleClusterPickerSelect = useCallback(
+    (id: string) => {
+      setClusterPickerEvents(null);
+      openEvent(id);
+    },
+    [openEvent]
+  );
+
   /** Mobile event-detail close → always list (map visible again). */
   const handleCloseEventDetail = useCallback(() => {
+    setClusterPickerEvents(null);
     closeEvent();
     setSheetState("list");
   }, [closeEvent]);
 
   /** Empty map tap: clear selection and collapse sheet (map-visible states only). */
   const handleMapBackgroundClick = useCallback(() => {
+    setClusterPickerEvents(null);
     closeEvent();
     setSheetState("collapsed");
   }, [closeEvent]);
@@ -324,11 +389,32 @@ function ExperienceApp() {
   // URL → sheet: deep link / browser back-forward.
   useEffect(() => {
     if (eventFromUrl) {
+      setClusterPickerEvents(null);
       setSheetState("event-detail");
       return;
     }
-    setSheetState((prev) => (prev === "event-detail" ? "list" : prev));
-  }, [eventFromUrl]);
+    setSheetState((prev) =>
+      prev === "event-detail" && !clusterPickerEvents ? "list" : prev
+    );
+  }, [eventFromUrl, clusterPickerEvents]);
+
+  // Drop cluster picker when its leaves leave the active discovery result set.
+  useEffect(() => {
+    if (!clusterPickerEvents) return;
+    if (
+      shouldClearClusterPicker(
+        clusterPickerEvents.map((e) => e.id),
+        events.map((e) => e.id)
+      )
+    ) {
+      setClusterPickerEvents(null);
+    }
+  }, [clusterPickerEvents, events]);
+
+  // Search / filter / location changes clear stale cluster selection UI.
+  useEffect(() => {
+    setClusterPickerEvents(null);
+  }, [q, date, distanceMiles, category, location.mode, location.lat, location.lng]);
 
   // Mark fit-on-data for initial load and filter/search/location changes only (not viewport).
   useEffect(() => {
@@ -376,7 +462,8 @@ function ExperienceApp() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      setLoading(true);
+      // Selection / sheet UI must not clear the list; only skeleton on empty.
+      if (!hasEventsRef.current) setLoading(true);
       setError(null);
 
       try {
@@ -385,25 +472,22 @@ function ExperienceApp() {
           lng: (bbox.minLng + bbox.maxLng) / 2,
         };
 
-        const params = new URLSearchParams({
-          experience: experience.id,
-          minLng: String(bbox.minLng),
-          minLat: String(bbox.minLat),
-          maxLng: String(bbox.maxLng),
-          maxLat: String(bbox.maxLat),
-          centerLat: String(center.lat),
-          centerLng: String(center.lng),
-          distance: String(distanceMiles),
+        const params = buildEventsApiSearchParams({
+          experienceId: experience.id,
+          bbox,
+          center,
+          distanceMiles,
+          q,
+          date,
+          category,
         });
-        if (q.trim()) params.set("q", q.trim());
-        if (date) params.set("date", date);
-        if (category) params.set("category", category);
 
         const res = await fetch(`/api/events?${params}`, {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("Failed to load events");
         const json = (await res.json()) as EventFeatureCollection;
+        hasEventsRef.current = json.features.length > 0;
         setFeatures(json);
 
         const selectedId = eventFromUrlRef.current;
@@ -455,9 +539,31 @@ function ExperienceApp() {
     fitResultsOnDataRef,
     onBackgroundClick: handleMapBackgroundClick,
     onUserLocation: handleUserLocation,
+    onMapCenterChange: setMapViewCenter,
+    onClusterPick: handleClusterPick,
     centerTarget: resolvedCenter,
+    searchAreaCenter: resolvedCenter,
+    searchAreaRadiusMiles: distanceMiles,
+    searchRecenterKey,
     geolocateRequestKey,
   };
+
+  const detailPanel = clusterPickerEvents ? (
+    <ClusterEventPicker
+      events={clusterPickerEvents}
+      onSelect={handleClusterPickerSelect}
+      onClose={clearClusterPicker}
+    />
+  ) : (
+    <EventDetail
+      event={selectedEvent}
+      userLocation={userLocation}
+      loading={Boolean(selectedEventId && !selectedEvent && loading)}
+      onClose={isDesktop ? closeEvent : handleCloseEventDetail}
+      recurrence={selectedRecurrence}
+      onSelectOccurrence={handleSelectEvent}
+    />
+  );
 
   const listProps = {
     events,
@@ -468,6 +574,7 @@ function ExperienceApp() {
     onClearFilters: clearFilters,
     onExpandDistance: expandDistance,
     canExpandDistance,
+    recurrenceLabelById,
   };
 
   if (isDesktop == null) {
@@ -500,7 +607,10 @@ function ExperienceApp() {
               inline
               onUseCurrentLocation={handleUseCurrentLocation}
             />
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div
+              data-testid="desktop-event-list-scroll"
+              className="min-h-0 flex-1 overflow-y-auto p-4"
+            >
               <EventList
                 {...listProps}
                 onSelect={(id) => handleSelectEvent(id)}
@@ -514,14 +624,21 @@ function ExperienceApp() {
               {...mapProps}
             />
             {nearLabel && (
-              <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-lg border border-[var(--border)] bg-[var(--card)]/95 px-3 py-1.5 text-sm font-medium text-[var(--foreground)] shadow-sm backdrop-blur">
-                {nearLabel}
+              <div className="pointer-events-auto absolute left-3 top-3 z-10">
+                <SearchAreaChip
+                  nearLabel={nearLabel}
+                  away={mapAwayFromSearch}
+                  onRecenter={requestSearchRecenter}
+                />
               </div>
             )}
-            {selectedEventId && (
+            {(clusterPickerEvents || selectedEventId) && (
               <div
                 className="absolute inset-0 z-30 flex items-stretch justify-end bg-black/40 p-4 motion-reduce:transition-none"
-                onClick={closeEvent}
+                onClick={() => {
+                  if (clusterPickerEvents) clearClusterPicker();
+                  else closeEvent();
+                }}
                 role="presentation"
               >
                 <div
@@ -529,16 +646,13 @@ function ExperienceApp() {
                   onClick={(e) => e.stopPropagation()}
                   role="dialog"
                   aria-modal="true"
-                  aria-label="Event details"
+                  aria-label={
+                    clusterPickerEvents
+                      ? "Events at this map location"
+                      : "Event details"
+                  }
                 >
-                  <EventDetail
-                    event={selectedEvent}
-                    userLocation={userLocation}
-                    loading={Boolean(
-                      selectedEventId && !selectedEvent && loading
-                    )}
-                    onClose={closeEvent}
-                  />
+                  {detailPanel}
                 </div>
               </div>
             )}
@@ -565,8 +679,20 @@ function ExperienceApp() {
               <FilterSheet
                 eventCount={events.length}
                 onUseCurrentLocation={handleUseCurrentLocation}
+                open={filtersOpen}
+                onOpenChange={setFiltersOpen}
               />
             </div>
+            {locationContextLabel && (
+              <div className="pointer-events-auto">
+                <SearchAreaChip
+                  nearLabel={locationContextLabel}
+                  away={mapAwayFromSearch}
+                  onRecenter={requestSearchRecenter}
+                  size="sm"
+                />
+              </div>
+            )}
           </div>
 
           <EventMap
@@ -589,28 +715,36 @@ function ExperienceApp() {
               />
             }
             eventDetail={
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-[0_1_55%] overflow-y-auto border-b border-[var(--border)] px-4 pb-4">
-                  <EventDetail
-                    event={selectedEvent}
-                    userLocation={userLocation}
-                    loading={Boolean(
-                      selectedEventId && !selectedEvent && loading
-                    )}
-                    onClose={handleCloseEventDetail}
-                  />
+              clusterPickerEvents ? (
+                <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2">
+                  {detailPanel}
                 </div>
-                <div className="min-h-0 flex-[1_1_45%] overflow-y-auto px-3 pb-4 pt-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
-                    Nearby events
-                  </p>
-                  <EventList
-                    {...listProps}
-                    onSelect={(id) => handleSelectEvent(id)}
-                    scrollSelectedIntoView
-                  />
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-[0_1_55%] overflow-y-auto border-b border-[var(--border)] px-4 pb-4">
+                    <EventDetail
+                      event={selectedEvent}
+                      userLocation={userLocation}
+                      loading={Boolean(
+                        selectedEventId && !selectedEvent && loading
+                      )}
+                      onClose={handleCloseEventDetail}
+                      recurrence={selectedRecurrence}
+                      onSelectOccurrence={handleSelectEvent}
+                    />
+                  </div>
+                  <div className="min-h-0 flex-[1_1_45%] overflow-y-auto px-3 pb-4 pt-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+                      Nearby events
+                    </p>
+                    <EventList
+                      {...listProps}
+                      onSelect={(id) => handleSelectEvent(id)}
+                      scrollSelectedIntoView
+                    />
+                  </div>
                 </div>
-              </div>
+              )
             }
           />
         </div>

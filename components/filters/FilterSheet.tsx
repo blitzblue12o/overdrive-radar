@@ -17,6 +17,7 @@ import {
 import {
   dateChipToParam,
   dateParamToChip,
+  locationInputDisplay,
   parseCategoryParam,
   parseDistanceMiles,
   parseLocationFromSearchParams,
@@ -108,26 +109,31 @@ export function FilterSheet({
   eventCount,
   inline = false,
   onUseCurrentLocation,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
 }: {
   eventCount: number;
   inline?: boolean;
   /** Request browser geolocation and switch into current-location mode. */
   onUseCurrentLocation?: () => void;
+  /** Optional controlled open (e.g. mobile location-context chip). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const experience = useExperience();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
+  const setOpen = onOpenChangeProp ?? setUncontrolledOpen;
 
   const location = useMemo(
     () => parseLocationFromSearchParams(searchParams),
     [searchParams]
   );
 
-  const resolvedDisplay =
-    location.displayLocation?.trim() ||
-    (location.mode === "current" ? "Current location" : "");
+  const resolvedDisplay = locationInputDisplay(location);
 
   const [locationInput, setLocationInput] = useState(resolvedDisplay);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -160,14 +166,18 @@ export function FilterSheet({
     if (!looksReady) return;
 
     const current = parseLocationFromSearchParams(searchParamsRef.current);
-    const currentLabel =
-      current.displayLocation?.trim() ||
-      (current.mode === "current" ? "Current location" : "");
+    const currentLabel = locationInputDisplay(current);
     if (
       current.mode !== "unknown" &&
       currentLabel.toLowerCase() === trimmed.toLowerCase()
     ) {
       setEditingLocation(false);
+      return;
+    }
+    // Typing "Current location" is not a searchable place.
+    if (trimmed.toLowerCase() === "current location") {
+      setEditingLocation(false);
+      setLocationInput(currentLabel);
       return;
     }
 
@@ -254,7 +264,12 @@ export function FilterSheet({
           ))}
         </div>
         {filters.date === "Pick a Date" && (
-          <label className="block text-sm">
+          <label className="block text-sm space-y-1">
+            <span className="text-xs text-[var(--muted-foreground)]">
+              {filters.pickedIsoDate
+                ? `Showing ${filters.pickedIsoDate}`
+                : "Choose a day"}
+            </span>
             <span className="sr-only">Pick a date</span>
             <input
               type="date"
@@ -266,7 +281,7 @@ export function FilterSheet({
                   pickedIsoDate: e.target.value || null,
                 })
               }
-              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             />
           </label>
         )}

@@ -10,9 +10,15 @@ import {
   normalizeRawEvent,
   type NormalizeLog,
 } from "@/lib/ingestion/normalize";
-import { syncAllActiveSources } from "@/lib/ingestion/sync";
-import type { SourceRecord } from "@/lib/ingestion/types";
-import { GeocodeCache } from "@/lib/ingestion/geocode";
+import { syncAllActiveSources, syncOneSource } from "@/lib/ingestion/sync";
+import type { NormalizedEventInsert, SourceRecord } from "@/lib/ingestion/types";
+import {
+  buildGeocodeQuery,
+  ensureCoordinates,
+  GeocodeCache,
+  resolveGeocodeQuery,
+} from "@/lib/ingestion/geocode";
+import { isVirtualLocation } from "@/lib/ingestion/virtual-location";
 
 const fixtures = join(__dirname, "fixtures");
 
@@ -41,6 +47,9 @@ describe("ICS adapter", () => {
     expect(events[1].title).toBe("Library Storytime");
     // All-day DATE → UTC noon (no calendar-day shift).
     expect(events[1].startsAt.toISOString()).toBe("2026-08-20T12:00:00.000Z");
+    expect(events[1].endsAt?.toISOString()).toBe("2026-08-21T12:00:00.000Z");
+    expect(events[1].metadata?.allDay).toBe(true);
+    expect(events[0].metadata?.allDay).toBeUndefined();
   });
 
   it("converts America/Los_Angeles TZID summer (PDT / UTC-7) to UTC", () => {
@@ -289,5 +298,374 @@ describe("geocode cache", () => {
     await cache.resolve("100 Main St, Ventura, CA");
     await cache.resolve("100 main st,  ventura, ca");
     expect(geocode).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("isVirtualLocation", () => {
+  const virtualCases = [
+    "ZOOM",
+    "ZOOM -",
+    "Zoom",
+    "Virtual",
+    "Virtual Event",
+    "Online",
+    "Online Event",
+    "via Zoom",
+    "<p>ZOOM</p> -",
+  ];
+
+  for (const input of virtualCases) {
+    it(`treats "${input}" as virtual`, () => {
+      expect(isVirtualLocation(input)).toBe(true);
+    });
+  }
+
+  const physicalCases = [
+    "Community Room",
+    "Camarillo Public Library",
+    "1000 E Ventura Blvd",
+    "City Hall",
+  ];
+
+  for (const input of physicalCases) {
+    it(`does not treat "${input}" as virtual`, () => {
+      expect(isVirtualLocation(input)).toBe(false);
+    });
+  }
+});
+
+describe("contextual geocoding", () => {
+  it("builds query with source geocode_context", () => {
+    expect(
+      buildGeocodeQuery("Community Room", "Community Room", "Camarillo, CA")
+    ).toBe("Community Room, Camarillo, CA");
+  });
+
+  it("omits context when absent (no-context regression)", () => {
+    expect(buildGeocodeQuery("City Hall", "City Hall", null)).toBe("City Hall");
+    expect(buildGeocodeQuery("City Hall", null, undefined)).toBe("City Hall");
+  });
+
+  it("sends contextual query to mocked geocoder and does not rewrite address", async () => {
+    const geocode = vi.fn(async () => ({
+      latitude: 34.2164,
+      longitude: -119.0376,
+    }));
+    const cache = new GeocodeCache(geocode);
+    const event = {
+      latitude: null as number | null,
+      longitude: null as number | null,
+      address: "Community Room",
+      venue_name: "Community Room",
+    };
+
+    const result = await ensureCoordinates(event, cache, {
+      geocodeContext: "Camarillo, CA",
+    });
+
+    expect(geocode).toHaveBeenCalledTimes(1);
+    expect(geocode).toHaveBeenCalledWith("Community Room, Camarillo, CA");
+    expect(result.latitude).toBeCloseTo(34.2164);
+    expect(result.longitude).toBeCloseTo(-119.0376);
+    expect(result.address).toBe("Community Room");
+    expect(result.venue_name).toBe("Community Room");
+  });
+
+  it("does not call Mapbox for virtual locations and clears coordinates", async () => {
+    const geocode = vi.fn(async () => ({
+      latitude: 30.231075,
+      longitude: -85.90144,
+    }));
+    const cache = new GeocodeCache(geocode);
+    const result = await ensureCoordinates(
+      {
+        latitude: 30.231075,
+        longitude: -85.90144,
+        address: "ZOOM -",
+        venue_name: "ZOOM -",
+      },
+      cache,
+      { geocodeContext: "Santa Paula, CA" }
+    );
+
+    expect(geocode).not.toHaveBeenCalled();
+    expect(result.latitude).toBeNull();
+    expect(result.longitude).toBeNull();
+    expect(result.address).toBe("ZOOM -");
+  });
+
+  it("uses geocode_override instead of room + context", async () => {
+    const override = "4101 Las Posas Road, Camarillo, CA 93010";
+    expect(
+      resolveGeocodeQuery({
+        address: "Homework Center",
+        venueName: "Homework Center",
+        geocodeContext: "Camarillo, CA",
+        geocodeOverride: override,
+      })
+    ).toBe(override);
+
+    const geocode = vi.fn(async () => ({
+      latitude: 34.2215,
+      longitude: -119.0308,
+    }));
+    const cache = new GeocodeCache(geocode);
+    const result = await ensureCoordinates(
+      {
+        latitude: null,
+        longitude: null,
+        address: "Homework Center",
+        venue_name: "Homework Center",
+      },
+      cache,
+      {
+        geocodeContext: "Camarillo, CA",
+        geocodeOverride: override,
+      }
+    );
+
+    expect(geocode).toHaveBeenCalledTimes(1);
+    expect(geocode).toHaveBeenCalledWith(override);
+    expect(geocode).not.toHaveBeenCalledWith("Homework Center");
+    expect(geocode).not.toHaveBeenCalledWith("Homework Center, Camarillo, CA");
+    expect(result.venue_name).toBe("Homework Center");
+    expect(result.address).toBe("Homework Center");
+    expect(result.latitude).toBeCloseTo(34.2215);
+  });
+
+  it("keeps virtual above geocode_override", async () => {
+    const geocode = vi.fn(async () => ({
+      latitude: 34.2215,
+      longitude: -119.0308,
+    }));
+    const cache = new GeocodeCache(geocode);
+    const result = await ensureCoordinates(
+      {
+        latitude: null,
+        longitude: null,
+        address: "ZOOM -",
+        venue_name: "ZOOM -",
+      },
+      cache,
+      {
+        geocodeOverride: "4101 Las Posas Road, Camarillo, CA 93010",
+      }
+    );
+
+    expect(geocode).not.toHaveBeenCalled();
+    expect(result.latitude).toBeNull();
+    expect(result.longitude).toBeNull();
+  });
+
+  it("uses context when override is absent", () => {
+    expect(
+      resolveGeocodeQuery({
+        address: "City Hall",
+        venueName: "City Hall",
+        geocodeContext: "Poway, CA",
+        geocodeOverride: null,
+      })
+    ).toBe("City Hall, Poway, CA");
+  });
+
+  it("defaults to location alone with no context or override", () => {
+    expect(
+      resolveGeocodeQuery({
+        address: "Teague Park",
+        venueName: "Teague Park",
+      })
+    ).toBe("Teague Park");
+  });
+
+  it("location_overrides beat geocode_override and fix stale pins", async () => {
+    const brimhall = {
+      match: "grant r. brimhall",
+      address: "1401 E Janss Road, Thousand Oaks, CA 91362",
+      latitude: 34.201162,
+      longitude: -118.852605,
+    };
+    const newbury = {
+      match: "newbury park library",
+      address: "2331 Borchard Road, Newbury Park, CA 91320",
+      latitude: 34.1845,
+      longitude: -118.9132,
+    };
+    const overrides = [newbury, brimhall];
+
+    expect(
+      resolveGeocodeQuery({
+        address: "Newbury Park Library Meeting Room",
+        venueName: "Newbury Park Library Meeting Room",
+        geocodeOverride: brimhall.address,
+        locationOverrides: overrides,
+      })
+    ).toBe(newbury.address);
+
+    const geocode = vi.fn(async () => ({
+      latitude: 99,
+      longitude: 99,
+    }));
+    const cache = new GeocodeCache(geocode);
+
+    // Stale Brimhall pin on a Newbury venue is corrected without Mapbox.
+    const fixed = await ensureCoordinates(
+      {
+        latitude: brimhall.latitude,
+        longitude: brimhall.longitude,
+        address: "Newbury Park Library Meeting Room, Newbury Park Library",
+        venue_name: "Newbury Park Library Meeting Room, Newbury Park Library",
+      },
+      cache,
+      {
+        geocodeOverride: brimhall.address,
+        locationOverrides: overrides,
+      }
+    );
+    expect(geocode).not.toHaveBeenCalled();
+    expect(fixed.latitude).toBeCloseTo(newbury.latitude);
+    expect(fixed.longitude).toBeCloseTo(newbury.longitude);
+
+    const goebel = await ensureCoordinates(
+      {
+        latitude: null,
+        longitude: null,
+        address: "Goebel Adult Community Center, Grant R. Brimhall Library",
+        venue_name: "Goebel Adult Community Center, Grant R. Brimhall Library",
+      },
+      cache,
+      {
+        geocodeOverride: brimhall.address,
+        locationOverrides: [
+          {
+            match: "goebel",
+            address: "1385 E Janss Road, Thousand Oaks, CA 91362",
+            latitude: 34.2008,
+            longitude: -118.8519,
+          },
+          ...overrides,
+        ],
+      }
+    );
+    expect(goebel.latitude).toBeCloseTo(34.2008);
+
+    // Ambiguous / unmatched keeps source override path when coords missing.
+    const unknown = await ensureCoordinates(
+      {
+        latitude: null,
+        longitude: null,
+        address: "Both Libraries",
+        venue_name: "Both Libraries",
+      },
+      cache,
+      {
+        geocodeOverride: brimhall.address,
+        locationOverrides: overrides,
+      }
+    );
+    expect(geocode).toHaveBeenCalledWith(brimhall.address);
+    expect(unknown.latitude).toBe(99);
+  });
+});
+
+describe("stale coordinate clearing on re-sync", () => {
+  it("updates existing event to null lat/lng when location becomes virtual", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const source = baseSource({
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      name: "City of Santa Paula — Calendar",
+    });
+
+    const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:firewise-zoom-1@example.com
+DTSTART:20260901T180000Z
+DTEND:20260901T190000Z
+SUMMARY:Firewise USA - Live Monthly Workshops - VIA ZOOM
+LOCATION:ZOOM -
+END:VEVENT
+END:VCALENDAR`;
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(ics, {
+          status: 200,
+          headers: { "Content-Type": "text/calendar" },
+        })
+      );
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === "events") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: {
+                      id: "existing-firewise",
+                      moderation_status: "pending",
+                      publication_status: "draft",
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+            update: (payload: Record<string, unknown>) => {
+              updates.push(payload);
+              return {
+                eq: async () => ({ error: null }),
+              };
+            },
+            insert: () => ({
+              select: () => ({
+                single: async () => ({
+                  data: null,
+                  error: { message: "should not insert" },
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "sources") {
+          return {
+            update: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          };
+        }
+        throw new Error(`unexpected table ${table}`);
+      }),
+    };
+
+    const geocode = vi.fn(async () => ({
+      latitude: 30.231075,
+      longitude: -85.90144,
+    }));
+    const cache = new GeocodeCache(geocode);
+
+    const result = await syncOneSource(
+      client as never,
+      source,
+      cache,
+      () => undefined
+    );
+
+    expect(result.updated).toBe(1);
+    expect(result.inserted).toBe(0);
+    expect(geocode).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(1);
+    expect(updates[0].latitude).toBeNull();
+    expect(updates[0].longitude).toBeNull();
+    expect(updates[0].venue_name).toBe("ZOOM -");
+
+    // Shape check: update carries nullable coords (clears geography via DB trigger).
+    const coords = updates[0] as Pick<NormalizedEventInsert, "latitude" | "longitude">;
+    expect(coords.latitude).toBeNull();
+    expect(coords.longitude).toBeNull();
+
+    fetchMock.mockRestore();
   });
 });

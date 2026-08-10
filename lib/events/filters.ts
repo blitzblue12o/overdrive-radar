@@ -90,7 +90,8 @@ function addDays(year: number, month: number, day: number, delta: number) {
 }
 
 /**
- * Resolve ?date= into a starts_at inclusive/exclusive range in absolute time.
+ * Resolve ?date= into a half-open [start, end) window in absolute time (LA).
+ * Discovery filters events by interval overlap against this window — not starts_at alone.
  * Supports: today | tomorrow | weekend | YYYY-MM-DD
  */
 export function resolveDateRange(
@@ -98,6 +99,8 @@ export function resolveDateRange(
   now: Date = new Date()
 ): { start: Date; end: Date } | null {
   if (!dateParam) return null;
+  // Pick-a-Date selected but no day yet — not an active temporal filter.
+  if (dateParam === CUSTOM_DATE_PENDING_PARAM) return null;
 
   const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateParam);
   if (isoDay) {
@@ -157,6 +160,9 @@ export function resolveDateRange(
   return null;
 }
 
+/** URL sentinel while Pick a Date is selected but no day chosen yet. */
+export const CUSTOM_DATE_PENDING_PARAM = "custom";
+
 export function dateChipToParam(
   chip: string | null,
   pickedIsoDate?: string | null
@@ -165,7 +171,10 @@ export function dateChipToParam(
   if (chip === "Today") return "today";
   if (chip === "Tomorrow") return "tomorrow";
   if (chip === "This Weekend") return "weekend";
-  if (chip === "Pick a Date") return pickedIsoDate || null;
+  if (chip === "Pick a Date") {
+    // Persist chip selection even before a day is chosen so the date control stays open.
+    return pickedIsoDate || CUSTOM_DATE_PENDING_PARAM;
+  }
   return null;
 }
 
@@ -177,6 +186,9 @@ export function dateParamToChip(param: string | null): {
   if (param === "today") return { chip: "Today", pickedIsoDate: null };
   if (param === "tomorrow") return { chip: "Tomorrow", pickedIsoDate: null };
   if (param === "weekend") return { chip: "This Weekend", pickedIsoDate: null };
+  if (param === CUSTOM_DATE_PENDING_PARAM) {
+    return { chip: "Pick a Date", pickedIsoDate: null };
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(param)) {
     return { chip: "Pick a Date", pickedIsoDate: param };
   }
@@ -201,6 +213,53 @@ export function bboxFromCenter(
     maxLng: center.lng + lngDelta,
     maxLat: center.lat + latDelta,
   };
+}
+
+const EARTH_RADIUS_MI = 3958.7613;
+
+/** Great-circle distance in miles (viewport vs search-center checks). */
+export function haversineMiles(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_MI * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Buffer on active search radius before showing "Return to…".
+ * 1.15× avoids flicker at the radius edge from viewport geometry.
+ */
+export const MAP_AWAY_RADIUS_FACTOR = 1.15;
+
+/** True when map center is meaningfully outside the active search area. */
+export function isMapAwayFromSearchArea(
+  mapCenter: { lat: number; lng: number },
+  searchCenter: { lat: number; lng: number },
+  radiusMiles: number,
+  factor: number = MAP_AWAY_RADIUS_FACTOR
+): boolean {
+  if (!Number.isFinite(radiusMiles) || radiusMiles <= 0) return false;
+  return haversineMiles(mapCenter, searchCenter) > radiusMiles * factor;
+}
+
+/** "Near Poway, CA" → "Return to Poway, CA" (preserves trailing "· N mi"). */
+export function searchAreaChipDisplayLabel(
+  nearLabel: string,
+  away: boolean
+): string {
+  if (!away) return nearLabel;
+  if (/^near\s+/i.test(nearLabel)) {
+    return nearLabel.replace(/^near\s+/i, "Return to ");
+  }
+  return `Return to ${nearLabel}`;
 }
 
 export function intersectBbox(
@@ -244,7 +303,32 @@ export function countActiveUiFilters(params: {
   return n;
 }
 
-/** Shared helper for EventMap suppress/fit flags — unit-tested for flyTo regression. */
+/** Peek whether a programmatic camera move should skip viewport refetch. */
+export function isViewportFetchSuppressed(ref: { current: boolean }): boolean {
+  return ref.current;
+}
+
+/**
+ * Arm suppress for a programmatic camera animation.
+ * Stays true through the animation's moveend (peek-only in emitViewport), then
+ * clears on a microtask so trailing moveend handlers in the same turn still skip.
+ */
+export function armViewportSuppressUntilMoveEnd(
+  ref: { current: boolean },
+  map: { once: (event: "moveend", listener: () => void) => void }
+): void {
+  ref.current = true;
+  map.once("moveend", () => {
+    queueMicrotask(() => {
+      ref.current = false;
+    });
+  });
+}
+
+/**
+ * One-shot consume (legacy). Prefer armViewportSuppressUntilMoveEnd +
+ * isViewportFetchSuppressed when Mapbox may emit multiple moveends.
+ */
 export function consumeViewportSuppress(ref: { current: boolean }): boolean {
   if (ref.current) {
     ref.current = false;
@@ -255,15 +339,18 @@ export function consumeViewportSuppress(ref: { current: boolean }): boolean {
 
 /**
  * Location modes (URL-backed):
- * - current:  ?near=you&lat=&lng=&loc=  — GPS coords authoritative; loc is display only
- * - searched: ?lat=&lng=&loc=           — geocoded search coords authoritative
+ * - current:  ?near=you&lat=&lng=       — device GPS; UI label is "Current location"
+ * - searched: ?lat=&lng=&loc=           — geocoded city/ZIP; loc is the search label
  * - unknown:  no lat/lng
+ *
+ * Invariant: only one active location source. Switching to current MUST clear
+ * any previous searched `loc` so the UI never shows "Poway" with device coords.
  */
 export type LocationMode = "current" | "searched" | "unknown";
 
 export type ParsedLocation = {
   mode: LocationMode;
-  /** Human-readable label from ?loc= (e.g. "Thousand Oaks, CA"). */
+  /** Human-readable label from ?loc= (searched). Null for device/current mode. */
   displayLocation: string | null;
   lat: number | null;
   lng: number | null;
@@ -304,10 +391,29 @@ export function parseLocationFromSearchParams(
 /** Collapsed-pill / map chrome label — omit when location is unknown. */
 export function locationNearLabel(location: ParsedLocation): string | null {
   if (location.mode === "unknown") return null;
-  const label =
-    location.displayLocation?.trim() ||
-    (location.mode === "current" ? "Current location" : null);
+  if (location.mode === "current") return "Near current location";
+  const label = location.displayLocation?.trim();
   return label ? `Near ${label}` : null;
+}
+
+/**
+ * Compact mobile context: "Near Poway, CA · 100 mi".
+ * Derived from the same ParsedLocation + distance as the discovery query — no extra state.
+ */
+export function locationDistanceContextLabel(
+  location: ParsedLocation,
+  distanceMiles: number
+): string | null {
+  const near = locationNearLabel(location);
+  if (!near) return null;
+  const miles = Number.isFinite(distanceMiles) ? distanceMiles : 25;
+  return `${near} · ${miles} mi`;
+}
+
+/** LOCATION input display value for the active mode. */
+export function locationInputDisplay(location: ParsedLocation): string {
+  if (location.mode === "current") return "Current location";
+  return location.displayLocation?.trim() || "";
 }
 
 export function clearLocationParams(params: URLSearchParams) {
@@ -317,19 +423,21 @@ export function clearLocationParams(params: URLSearchParams) {
   params.delete("near");
 }
 
-/** GPS / "use my location" — coords are precise; loc is display-only. */
+/**
+ * Device GPS / "Use my location".
+ * Always clears `loc` so a prior manual city label cannot linger.
+ */
 export function setCurrentLocationParams(
   params: URLSearchParams,
-  next: { lat: number; lng: number; loc?: string | null }
+  next: { lat: number; lng: number }
 ) {
   params.set("near", "you");
   params.set("lat", String(next.lat));
   params.set("lng", String(next.lng));
-  if (next.loc?.trim()) params.set("loc", next.loc.trim());
-  else params.delete("loc");
+  params.delete("loc");
 }
 
-/** User-entered city/ZIP search — geocoded coords are authoritative. */
+/** User-entered city/ZIP search — geocoded coords + label are authoritative. */
 export function setSearchedLocationParams(
   params: URLSearchParams,
   next: { loc: string; lat: number; lng: number }

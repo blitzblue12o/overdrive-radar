@@ -56,6 +56,14 @@ export function createMockEventsClient(rows: EventRecord[]): EventsQueryClient {
             return titleScore > 0.2 || venueScore > 0.2;
           });
         }
+        // Mirror production search_events premature LIMIT 50.
+        data = data
+          .slice()
+          .sort(
+            (a, b) =>
+              new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+          )
+          .slice(0, 50);
         return { data, error: null };
       }
 

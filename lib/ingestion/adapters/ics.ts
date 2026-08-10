@@ -12,7 +12,8 @@ export function parseIcs(text: string): RawSourceEvent[] {
   for (const block of blocks) {
     const body = block.split(/END:VEVENT/i)[0] ?? "";
     const props = parseProps(body);
-    const startsAt = parseIcsDate(props.get("DTSTART"));
+    const startProp = props.get("DTSTART");
+    const startsAt = parseIcsDate(startProp);
     if (!startsAt) continue;
 
     const title = props.get("SUMMARY")?.value?.trim();
@@ -22,7 +23,9 @@ export function parseIcs(text: string): RawSourceEvent[] {
       props.get("UID")?.value?.trim() ||
       `${title}|${startsAt.toISOString()}`;
 
-    const endsAt = parseIcsDate(props.get("DTEND"));
+    const endProp = props.get("DTEND");
+    const endsAt = parseIcsDate(endProp);
+    const allDay = isIcsDateValue(startProp);
     const geo = parseGeo(props.get("GEO")?.value);
     const location = props.get("LOCATION")?.value?.trim() || null;
     const categories = (props.get("CATEGORIES")?.value ?? "")
@@ -37,7 +40,7 @@ export function parseIcs(text: string): RawSourceEvent[] {
       startsAt,
       endsAt,
       timezone:
-        props.get("DTSTART")?.params.TZID ||
+        startProp?.params.TZID ||
         props.get("X-WR-TIMEZONE")?.value ||
         "America/Los_Angeles",
       venueName: location,
@@ -50,6 +53,8 @@ export function parseIcs(text: string): RawSourceEvent[] {
       metadata: {
         rawUid: props.get("UID")?.value ?? null,
         status: props.get("STATUS")?.value ?? null,
+        // Authoritative ICS VALUE=DATE signal for exclusive-DTEND display/filter.
+        ...(allDay ? { allDay: true } : {}),
       },
     });
   }
@@ -83,11 +88,18 @@ function parseProps(body: string): Map<string, IcsProp> {
   return map;
 }
 
+/** True when the property is an ICS DATE (VALUE=DATE or bare YYYYMMDD). */
+export function isIcsDateValue(prop?: IcsProp): boolean {
+  if (!prop?.value) return false;
+  const raw = prop.value.trim();
+  return prop.params.VALUE === "DATE" || /^\d{8}$/.test(raw);
+}
+
 /** Exported for unit tests — parses DTSTART/DTEND property values. */
 export function parseIcsDate(prop?: IcsProp): Date | null {
   if (!prop?.value) return null;
   const raw = prop.value.trim();
-  if (prop.params.VALUE === "DATE" || /^\d{8}$/.test(raw)) {
+  if (isIcsDateValue(prop)) {
     const y = Number(raw.slice(0, 4));
     const m = Number(raw.slice(4, 6)) - 1;
     const d = Number(raw.slice(6, 8));

@@ -114,10 +114,10 @@ values
     'community'
   ),
   (
-    'City of Port Hueneme — Main City Calendar',
+    'City of Port Hueneme — Recreation & Community Services',
     'event_discovery',
     'ics',
-    'https://www.ci.port-hueneme.ca.us/common/modules/iCalendar/iCalendar.aspx?catID=14&feed=calendar',
+    'https://www.ci.port-hueneme.ca.us/common/modules/iCalendar/iCalendar.aspx?catID=24&feed=calendar',
     true,
     null,
     'community'
@@ -221,10 +221,10 @@ values
     'community'
   ),
   (
-    'City of Westlake Village — Main Calendar',
+    'City of Westlake Village — Special Events',
     'event_discovery',
     'ics',
-    'https://www.wlv.org/common/modules/iCalendar/iCalendar.aspx?catID=14&feed=calendar',
+    'https://www.wlv.org/common/modules/iCalendar/iCalendar.aspx?catID=28&feed=calendar',
     true,
     null,
     'community'
@@ -237,6 +237,15 @@ values
     true,
     null,
     'community'
+  ),
+  (
+    'Simi Valley Public Library — Events',
+    'event_discovery',
+    'librarycalendar',
+    'https://simivalley.librarycalendar.com',
+    true,
+    null,
+    'educational'
   )
 on conflict (name, experience) do update set
   adapter_type = excluded.adapter_type,
@@ -245,3 +254,49 @@ on conflict (name, experience) do update set
   default_category_overdrive = excluded.default_category_overdrive,
   default_category_event_discovery = excluded.default_category_event_discovery,
   updated_at = now();
+
+-- Locality hint + canonical facility address for LibCal room/venue nicknames.
+-- Room names stay on events; override is the Mapbox geocode target only.
+update sources
+set geocode_context = 'Camarillo, CA',
+    geocode_override = '4101 Las Posas Road, Camarillo, CA 93010',
+    updated_at = now()
+where name = 'Camarillo Public Library — Events Calendar'
+  and experience = 'event_discovery';
+
+-- Multi-campus LibCal: facility map beats source-level geocode_override when matched.
+update sources
+set geocode_context = 'Thousand Oaks, CA',
+    geocode_override = '1401 E Janss Road, Thousand Oaks, CA 91362',
+    location_overrides = $json$[
+      {"match": "newbury park library", "address": "2331 Borchard Road, Newbury Park, CA 91320", "latitude": 34.18492, "longitude": -118.91405},
+      {"match": "goebel", "address": "1385 E Janss Road, Thousand Oaks, CA 91362", "latitude": 34.20085, "longitude": -118.85195},
+      {"match": "grant r. brimhall", "address": "1401 E Janss Road, Thousand Oaks, CA 91362", "latitude": 34.201162, "longitude": -118.852605},
+      {"match": "brimhall library", "address": "1401 E Janss Road, Thousand Oaks, CA 91362", "latitude": 34.201162, "longitude": -118.852605}
+    ]$json$::jsonb,
+    updated_at = now()
+where name = 'Thousand Oaks Library — Events Calendar'
+  and experience = 'event_discovery';
+
+-- Simi library: pin library-named venues; offsite programs geocode via address+context.
+update sources
+set geocode_context = 'Simi Valley, CA',
+    geocode_override = null,
+    location_overrides = $json$[
+      {"match": "simi valley public library", "address": "2969 Tapo Canyon Rd, Simi Valley, CA 93063", "latitude": 34.288922, "longitude": -118.719389}
+    ]$json$::jsonb,
+    updated_at = now()
+where name = 'Simi Valley Public Library — Events'
+  and experience = 'event_discovery';
+
+-- M2: only Poway is trusted for controlled auto-publication. All others stay probation.
+update sources
+set publication_policy = 'probation',
+    updated_at = now()
+where experience = 'event_discovery';
+
+update sources
+set publication_policy = 'trusted',
+    updated_at = now()
+where name = 'City of Poway — Community Events'
+  and experience = 'event_discovery';

@@ -139,6 +139,8 @@ export function MobileBottomSheet({
       : `${nearPrefix}${eventCount} ${experience.theme.densityLabel} ↑`;
 
   // Keep list mounted under event-detail so scroll position is preserved on return.
+  // Hide with CSS (do not unmount) when showing event-detail — the overflow-y-auto
+  // node owns list scrollTop and must survive the list ↔ detail transition.
   const showListPane = state === "list" || state === "event-detail";
 
   return (
@@ -189,8 +191,17 @@ export function MobileBottomSheet({
         </button>
       )}
 
-      {showListPane && !isEventDetail && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">{list}</div>
+      {showListPane && (
+        <div
+          data-testid="mobile-event-list-scroll"
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto px-3 pb-4",
+            isEventDetail && "hidden"
+          )}
+          aria-hidden={isEventDetail}
+        >
+          {list}
+        </div>
       )}
 
       {isEventDetail && (
