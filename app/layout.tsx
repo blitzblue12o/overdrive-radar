@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -8,7 +8,20 @@ const dmSans = DM_Sans({
   display: "swap",
 });
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F8FAFB" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B1424" },
+  ],
+};
+
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000")
+  ),
   title: {
     default: "Overdrive Radar",
     template: "%s · Overdrive Radar",
@@ -38,10 +51,6 @@ export const metadata: Metadata = {
     description:
       "Discover automotive events and local activities across Southern California.",
   },
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F8FAFB" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B1424" },
-  ],
 };
 
 export default function RootLayout({
