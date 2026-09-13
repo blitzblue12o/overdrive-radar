@@ -1,4 +1,11 @@
-import type { RawSourceEvent, SourceAdapter, SourceRecord } from "@/lib/ingestion/types";
+import { fetchFeedConditional } from "@/lib/ingestion/http";
+import type {
+  FetchEventsOptions,
+  FetchEventsResult,
+  RawSourceEvent,
+  SourceAdapter,
+  SourceRecord,
+} from "@/lib/ingestion/types";
 
 /**
  * Minimal RFC 5545 VEVENT parser — covers CivicPlus, LibCal/Springshare,
@@ -226,18 +233,42 @@ function unescapeIcs(value: string): string {
 export class IcsAdapter implements SourceAdapter {
   readonly type = "ics" as const;
 
-  async fetchEvents(source: SourceRecord): Promise<RawSourceEvent[]> {
+  async fetchEvents(
+    source: SourceRecord,
+    options: FetchEventsOptions = {}
+  ): Promise<FetchEventsResult> {
     if (!source.feed_url) {
       throw new Error(`Source ${source.name} has no feed_url`);
     }
-    const res = await fetch(source.feed_url, {
-      headers: { "User-Agent": "OverdriveRadarIngestion/1.0" },
-      cache: "no-store",
+    const result = await fetchFeedConditional({
+      url: source.feed_url,
+      etag: options.etag,
+      lastModified: options.lastModified,
+      onRetry: options.onRetry,
     });
-    if (!res.ok) {
-      throw new Error(`ICS fetch failed (${res.status}) for ${source.feed_url}`);
+    if (result.status === "not_modified") {
+      return {
+        events: [],
+        notModified: true,
+        etag: result.etag,
+        lastModified: result.lastModified,
+      };
     }
-    const text = await res.text();
-    return parseIcs(text);
+    const contentType = result.contentType ?? "";
+    const looksHtml =
+      /text\/html/i.test(contentType) ||
+      /^\s*<!DOCTYPE html/i.test(result.text) ||
+      /^\s*<html/i.test(result.text);
+    if (looksHtml) {
+      throw new Error(
+        `ICS feed returned HTML instead of calendar data for ${source.feed_url}`
+      );
+    }
+    return {
+      events: parseIcs(result.text),
+      etag: result.etag,
+      lastModified: result.lastModified,
+      contentType: result.contentType,
+    };
   }
 }

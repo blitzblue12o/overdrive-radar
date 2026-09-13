@@ -59,6 +59,11 @@ export type SourceRecord = {
   location_overrides?: LocationOverride[] | null;
   /** EventDiscovery publication trust: probation (default) | trusted. */
   publication_policy?: "probation" | "trusted" | null;
+  /** Deterministic cron batch 0..3. */
+  sync_batch?: number | null;
+  /** Cached HTTP validators for conditional feed fetches. */
+  http_etag?: string | null;
+  http_last_modified?: string | null;
 };
 
 /** Source-configured facility pin / geocode target (not source-name branched). */
@@ -95,24 +100,68 @@ export type NormalizedEventInsert = {
   last_source_sync_at: string;
 };
 
+export type FetchEventsOptions = {
+  etag?: string | null;
+  lastModified?: string | null;
+  onRetry?: (attempt: number, err: unknown) => void;
+};
+
+export type FetchEventsResult = {
+  events: RawSourceEvent[];
+  notModified?: boolean;
+  etag?: string | null;
+  lastModified?: string | null;
+  contentType?: string | null;
+  /** Adapter-level note (e.g. HTML body / empty channel). */
+  feedNote?: string | null;
+};
+
 export interface SourceAdapter {
   readonly type: AdapterType;
-  fetchEvents(source: SourceRecord): Promise<RawSourceEvent[]>;
+  fetchEvents(
+    source: SourceRecord,
+    options?: FetchEventsOptions
+  ): Promise<FetchEventsResult>;
 }
+
+export type SyncSourceStatus =
+  | "success"
+  | "success_empty"
+  | "partial_failure"
+  | "failure"
+  | "skipped_locked";
 
 export type SyncSourceResult = {
   sourceId: string;
   sourceName: string;
-  status: "success" | "partial_failure" | "failure";
+  status: SyncSourceStatus;
   fetched: number;
   inserted: number;
   updated: number;
   skipped: number;
+  durationMs?: number;
   error?: string;
+  anomalyWarning?: string;
+  notModified?: boolean;
 };
+
+export type SyncInvocation = "scheduled" | "manual" | "unknown";
+
+export type PipelineRunStatus =
+  | "running"
+  | "success"
+  | "partial_failure"
+  | "failure"
+  | "abandoned"
+  | "timed_out";
 
 export type SyncRunResult = {
   startedAt: string;
   finishedAt: string;
+  batchId?: number | null;
+  runId?: string | null;
+  invocation?: SyncInvocation;
+  status: PipelineRunStatus;
+  durationMs: number;
   sources: SyncSourceResult[];
 };

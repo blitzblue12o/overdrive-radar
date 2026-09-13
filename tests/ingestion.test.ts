@@ -216,7 +216,10 @@ describe("sync isolation", () => {
 
     const icsBody = readFileSync(join(fixtures, "sample.ics"), "utf8");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(icsBody, { status: 200 })
+      new Response(icsBody, {
+        status: 200,
+        headers: { "Content-Type": "text/calendar" },
+      })
     );
 
     const statusUpdates: Array<{ id: string; status: string }> = [];
@@ -227,7 +230,9 @@ describe("sync isolation", () => {
         if (table === "sources") {
           return {
             select: () => ({
-              eq: async () => ({ data: sources, error: null }),
+              eq: () => ({
+                order: async () => ({ data: sources, error: null }),
+              }),
             }),
             update: (payload: { last_sync_status: string }) => ({
               eq: async (_col: string, id: string) => {
@@ -239,13 +244,20 @@ describe("sync isolation", () => {
         }
         if (table === "events") {
           return {
-            select: () => ({
-              eq: () => ({
+            select: (_cols?: string, opts?: { count?: string; head?: boolean }) => {
+              if (opts?.head) {
+                return {
+                  like: async () => ({ count: 0, error: null }),
+                };
+              }
+              return {
                 eq: () => ({
-                  maybeSingle: async () => ({ data: null, error: null }),
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: null, error: null }),
+                  }),
                 }),
-              }),
-            }),
+              };
+            },
             insert: (row: unknown) => {
               inserted.push(row);
               return {
@@ -258,20 +270,31 @@ describe("sync isolation", () => {
               };
             },
             update: () => ({
-              eq: () => ({
-                eq: async () => ({ error: null }),
-              }),
+              eq: async () => ({ error: null }),
             }),
           };
         }
         throw new Error(`unexpected table ${table}`);
       },
-      rpc: async () => ({ data: [], error: null }),
+      rpc: async (fn: string) => {
+        if (fn === "upsert_ingested_event") {
+          return {
+            data: null,
+            error: { message: "Could not find the function upsert_ingested_event" },
+          };
+        }
+        if (fn === "find_possible_duplicates") {
+          return { data: [], error: null };
+        }
+        return { data: null, error: { message: "unexpected rpc" } };
+      },
     };
 
     const result = await syncAllActiveSources({
       client: client as never,
       geocode: async () => null,
+      useSourceLocks: false,
+      useLedger: false,
     });
 
     expect(result.sources).toHaveLength(2);
@@ -599,20 +622,40 @@ END:VCALENDAR`;
       from: vi.fn((table: string) => {
         if (table === "events") {
           return {
-            select: () => ({
-              eq: () => ({
+            select: (_cols?: string, opts?: { count?: string; head?: boolean }) => {
+              if (opts?.head) {
+                return {
+                  like: async () => ({ count: 1, error: null }),
+                };
+              }
+              return {
                 eq: () => ({
-                  maybeSingle: async () => ({
-                    data: {
-                      id: "existing-firewise",
-                      moderation_status: "pending",
-                      publication_status: "draft",
-                    },
-                    error: null,
+                  eq: () => ({
+                    maybeSingle: async () => ({
+                      data: {
+                        id: "existing-firewise",
+                        title: "Old title with coords",
+                        description: null,
+                        starts_at: "2026-09-01T18:00:00.000Z",
+                        ends_at: "2026-09-01T19:00:00.000Z",
+                        timezone: "America/Los_Angeles",
+                        venue_name: "City Hall",
+                        address: "City Hall",
+                        latitude: 30.231075,
+                        longitude: -85.90144,
+                        source_url: null,
+                        organizer_name: null,
+                        overdrive_category: null,
+                        event_discovery_category: "community",
+                        moderation_status: "pending",
+                        publication_status: "draft",
+                      },
+                      error: null,
+                    }),
                   }),
                 }),
-              }),
-            }),
+              };
+            },
             update: (payload: Record<string, unknown>) => {
               updates.push(payload);
               return {
@@ -638,6 +681,19 @@ END:VCALENDAR`;
         }
         throw new Error(`unexpected table ${table}`);
       }),
+      rpc: async (fn: string, args?: { p_event?: Record<string, unknown> }) => {
+        if (fn === "upsert_ingested_event" && args?.p_event) {
+          updates.push(args.p_event);
+          return {
+            data: [{ event_id: "existing-firewise", was_inserted: false }],
+            error: null,
+          };
+        }
+        return {
+          data: null,
+          error: { message: `unexpected rpc ${fn}` },
+        };
+      },
     };
 
     const geocode = vi.fn(async () => ({
@@ -650,7 +706,8 @@ END:VCALENDAR`;
       client as never,
       source,
       cache,
-      () => undefined
+      () => undefined,
+      { useLocks: false }
     );
 
     expect(result.updated).toBe(1);

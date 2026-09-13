@@ -92,7 +92,7 @@ Set these for **Production** (and Preview if you want previews to hit live data)
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page → `anon` `public` key (never `service_role`) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox account → public access token (`pk.…`) — also used for Permanent Geocoding in sync |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Dashboard → API → `service_role` (server-only; never expose to the browser) |
-| `CRON_SECRET` | Random secret; Vercel Cron sends it as `Authorization: Bearer …` to `/api/cron/sync-sources` |
+| `CRON_SECRET` | Random secret; Vercel Cron sends it as `Authorization: Bearer …` to `/api/cron/sync-sources/batch-{0..3}` |
 
 Local mapping: public vars match `.env.example` / `.env.local`. Server-only vars (`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`) are required for Wave 3 ingestion.
 

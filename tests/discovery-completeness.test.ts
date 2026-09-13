@@ -14,8 +14,9 @@ function makePublished(
   index: number,
   overrides: Partial<EventRecord> = {}
 ): EventRecord {
-  const day = 10 + Math.floor(index / 3);
-  const starts = `2026-09-${String(day).padStart(2, "0")}T18:00:00.000Z`;
+  // Keep all fixtures in the future relative to the test "today" (2026-09-13).
+  const day = 20 + Math.floor(index / 3);
+  const starts = `2026-09-${String(Math.min(day, 28)).padStart(2, "0")}T18:00:00.000Z`;
   return {
     id: `ed-bulk-${index}`,
     experience: "event_discovery",

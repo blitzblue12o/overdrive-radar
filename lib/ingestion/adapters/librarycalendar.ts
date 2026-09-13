@@ -1,4 +1,7 @@
+import { FEED_TIMEOUT_MS, fetchWithRetry } from "@/lib/ingestion/http";
 import type {
+  FetchEventsOptions,
+  FetchEventsResult,
   RawSourceEvent,
   SourceAdapter,
   SourceRecord,
@@ -329,7 +332,10 @@ async function mapPool<T, R>(
 export class LibraryCalendarAdapter implements SourceAdapter {
   readonly type = "librarycalendar" as const;
 
-  async fetchEvents(source: SourceRecord): Promise<RawSourceEvent[]> {
+  async fetchEvents(
+    source: SourceRecord,
+    options: FetchEventsOptions = {}
+  ): Promise<FetchEventsResult> {
     if (!source.feed_url) {
       throw new Error(`Source ${source.name} has no feed_url`);
     }
@@ -349,18 +355,15 @@ export class LibraryCalendarAdapter implements SourceAdapter {
     for (let i = 0; i < horizon; i++) {
       const day = ymdUtc(addUtcDays(startDay, i));
       const feedUrl = libraryCalendarDayFeedUrl(origin, day);
-      const res = await fetch(feedUrl, {
+      const res = await fetchWithRetry({
+        url: feedUrl,
+        timeoutMs: FEED_TIMEOUT_MS,
         headers: {
           "User-Agent": "OverdriveRadarIngestion/1.0",
           Accept: "text/html",
         },
-        cache: "no-store",
+        onRetry: options.onRetry,
       });
-      if (!res.ok) {
-        throw new Error(
-          `LibraryCalendar day feed failed (${res.status}) for ${feedUrl}`
-        );
-      }
       const html = await res.text();
       for (const path of extractLibraryCalendarEventPaths(html)) {
         pathSet.add(path);
@@ -381,21 +384,18 @@ export class LibraryCalendarAdapter implements SourceAdapter {
     const paths = Array.from(pathSet);
     const parsed = await mapPool(paths, 5, async (path) => {
       const pageUrl = new URL(path, origin).toString();
-      const res = await fetch(pageUrl, {
-        headers: {
-          "User-Agent": "OverdriveRadarIngestion/1.0",
-          Accept: "text/html",
-        },
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        console.warn(
-          `[librarycalendar] detail fetch ${res.status} for ${pageUrl}`
-        );
-        return null;
-      }
-      const html = await res.text();
       try {
+        const res = await fetchWithRetry({
+          url: pageUrl,
+          timeoutMs: FEED_TIMEOUT_MS,
+          headers: {
+            "User-Agent": "OverdriveRadarIngestion/1.0",
+            Accept: "text/html",
+          },
+          maxAttempts: 2,
+          onRetry: options.onRetry,
+        });
+        const html = await res.text();
         const event = parseLibraryCalendarEventPage(html, pageUrl);
         if (!event) return null;
         const fromFeed = categoryByPath.get(path) ?? [];
@@ -407,7 +407,7 @@ export class LibraryCalendarAdapter implements SourceAdapter {
         return event;
       } catch (err) {
         console.warn(
-          `[librarycalendar] parse failed for ${pageUrl}`,
+          `[librarycalendar] detail fetch failed for ${pageUrl}`,
           err instanceof Error ? err.message : err
         );
         return null;
@@ -415,7 +415,7 @@ export class LibraryCalendarAdapter implements SourceAdapter {
     });
 
     // Drop cancelled + malformed; keep deterministic order by start then uid.
-    return parsed
+    const events = parsed
       .filter((e): e is RawSourceEvent => Boolean(e))
       .filter((e) => e.metadata?.cancelled !== true)
       .sort(
@@ -423,5 +423,7 @@ export class LibraryCalendarAdapter implements SourceAdapter {
           a.startsAt.getTime() - b.startsAt.getTime() ||
           a.uid.localeCompare(b.uid)
       );
+
+    return { events };
   }
 }

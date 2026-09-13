@@ -300,3 +300,35 @@ set publication_policy = 'trusted',
     updated_at = now()
 where name = 'City of Poway — Community Events'
   and experience = 'event_discovery';
+
+-- Sync batch assignment (workload-balanced; keep in sync with lib/ingestion/batches.ts).
+update sources set sync_batch = 0 where name in (
+  'City of Yorba Linda — Parks & Recreation Events',
+  'City of Anaheim — Calendar',
+  'City of Ventura — Parks & Recreation Events',
+  'City of Moorpark — Community Events',
+  'City of Fillmore — Community Events',
+  'City of Ojai — Events'
+);
+update sources set sync_batch = 1 where name in (
+  'Thousand Oaks Library — Events Calendar',
+  'PCA-LA (Porsche Club of America — Los Angeles)',
+  'City of Beverly Hills — City Events and Activities',
+  'Beverly Hills Public Library — Events and Activities',
+  'City of Port Hueneme — Recreation & Community Services',
+  'City of Escondido — City Events'
+);
+update sources set sync_batch = 2 where name in (
+  'Camarillo Public Library — Events Calendar',
+  'City of Poway — Community Events',
+  'City of Imperial Beach — Events Calendar',
+  'City of Westlake Village — Special Events',
+  'City of La Mesa — Community Events',
+  'City of Del Mar — Community Calendar'
+);
+update sources set sync_batch = 3 where name in (
+  'City of Coronado — Main Calendar',
+  'Simi Valley Public Library — Events',
+  'City of Santa Paula — Calendar',
+  'City of Malibu — Special Events'
+);

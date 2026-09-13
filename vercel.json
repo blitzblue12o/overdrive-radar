@@ -3,8 +3,20 @@
   "framework": "nextjs",
   "crons": [
     {
-      "path": "/api/cron/sync-sources",
+      "path": "/api/cron/sync-sources/batch-0",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/sync-sources/batch-1",
+      "schedule": "10 14 * * *"
+    },
+    {
+      "path": "/api/cron/sync-sources/batch-2",
+      "schedule": "20 14 * * *"
+    },
+    {
+      "path": "/api/cron/sync-sources/batch-3",
+      "schedule": "30 14 * * *"
     }
   ]
 }

@@ -3,18 +3,12 @@ import { handleSyncCronRequest } from "@/lib/ingestion/cron-handler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Legacy all-source route — manual/admin only; not scheduled. */
 export const maxDuration = 600;
 
-/**
- * Manual / admin compatibility: syncs all active sources.
- * Production schedule uses /api/cron/sync-sources/batch-{0..3} instead.
- */
+const ROUTE = "/api/cron/sync-sources/batch-0";
+
 export async function GET(request: NextRequest) {
-  return handleSyncCronRequest(request, {
-    route: "/api/cron/sync-sources",
-    batchId: null,
-  });
+  return handleSyncCronRequest(request, { route: ROUTE, batchId: 0 });
 }
 
 export async function POST(request: NextRequest) {

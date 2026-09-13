@@ -1,4 +1,8 @@
 import { isVirtualLocation } from "@/lib/ingestion/virtual-location";
+import {
+  fetchWithRetry,
+  GEOCODER_TIMEOUT_MS,
+} from "@/lib/ingestion/http";
 import type { LocationOverride } from "@/lib/ingestion/types";
 
 export type GeocodeResult = {
@@ -116,20 +120,27 @@ export function createMapboxGeocoder(token?: string): GeocodeFn {
     url.searchParams.set("country", "US");
     url.searchParams.set("proximity", "-118.4,34.15");
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = (await res.json()) as {
-      features?: Array<{
-        center?: [number, number];
-        place_name?: string;
-      }>;
-    };
-    const feature = json.features?.[0];
-    const center = feature?.center;
-    if (!center || center.length < 2) return null;
-    const [lng, lat] = center;
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { latitude: lat, longitude: lng, placeName: feature?.place_name };
+    try {
+      const res = await fetchWithRetry({
+        url: url.toString(),
+        timeoutMs: GEOCODER_TIMEOUT_MS,
+        maxAttempts: 2,
+      });
+      const json = (await res.json()) as {
+        features?: Array<{
+          center?: [number, number];
+          place_name?: string;
+        }>;
+      };
+      const feature = json.features?.[0];
+      const center = feature?.center;
+      if (!center || center.length < 2) return null;
+      const [lng, lat] = center;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return { latitude: lat, longitude: lng, placeName: feature?.place_name };
+    } catch {
+      return null;
+    }
   };
 }
 

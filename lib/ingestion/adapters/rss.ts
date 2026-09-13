@@ -1,4 +1,11 @@
-import type { RawSourceEvent, SourceAdapter, SourceRecord } from "@/lib/ingestion/types";
+import { fetchFeedConditional } from "@/lib/ingestion/http";
+import type {
+  FetchEventsOptions,
+  FetchEventsResult,
+  RawSourceEvent,
+  SourceAdapter,
+  SourceRecord,
+} from "@/lib/ingestion/types";
 
 /**
  * Defensive RSS 2.0 / Atom parser for CivicPlus and similar calendar feeds.
@@ -149,18 +156,64 @@ function numberOrNull(value: string | null): number | null {
 export class RssAdapter implements SourceAdapter {
   readonly type = "rss" as const;
 
-  async fetchEvents(source: SourceRecord): Promise<RawSourceEvent[]> {
+  async fetchEvents(
+    source: SourceRecord,
+    options: FetchEventsOptions = {}
+  ): Promise<FetchEventsResult> {
     if (!source.feed_url) {
       throw new Error(`Source ${source.name} has no feed_url`);
     }
-    const res = await fetch(source.feed_url, {
-      headers: { "User-Agent": "OverdriveRadarIngestion/1.0" },
-      cache: "no-store",
+    const result = await fetchFeedConditional({
+      url: source.feed_url,
+      etag: options.etag,
+      lastModified: options.lastModified,
+      onRetry: options.onRetry,
     });
-    if (!res.ok) {
-      throw new Error(`RSS fetch failed (${res.status}) for ${source.feed_url}`);
+    if (result.status === "not_modified") {
+      return {
+        events: [],
+        notModified: true,
+        etag: result.etag,
+        lastModified: result.lastModified,
+      };
     }
-    const text = await res.text();
-    return parseRss(text);
+
+    const contentType = result.contentType ?? "";
+    const looksHtml =
+      /text\/html/i.test(contentType) ||
+      /^\s*<!DOCTYPE html/i.test(result.text) ||
+      /^\s*<html/i.test(result.text);
+    const looksXml =
+      /xml|rss|atom/i.test(contentType) ||
+      /^\s*<\?xml/i.test(result.text) ||
+      /^\s*<rss/i.test(result.text) ||
+      /^\s*<feed/i.test(result.text);
+
+    if (looksHtml && !looksXml) {
+      throw new Error(
+        `RSS feed returned HTML instead of feed XML for ${source.feed_url}`
+      );
+    }
+
+    const events = parseRss(result.text);
+    let feedNote: string | null = null;
+    if (events.length === 0) {
+      const hasChannel =
+        /<channel[\s>]/i.test(result.text) || /<feed[\s>]/i.test(result.text);
+      if (hasChannel) {
+        feedNote =
+          "Feed XML parsed successfully but contained zero item/entry elements";
+      } else if (!looksXml) {
+        feedNote = `Unexpected feed body (content-type=${contentType || "unknown"})`;
+      }
+    }
+
+    return {
+      events,
+      etag: result.etag,
+      lastModified: result.lastModified,
+      contentType: result.contentType,
+      feedNote,
+    };
   }
 }

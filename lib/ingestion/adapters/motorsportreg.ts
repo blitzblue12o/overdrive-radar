@@ -1,4 +1,8 @@
-import type { RawSourceEvent, SourceAdapter, SourceRecord } from "@/lib/ingestion/types";
+import type {
+  FetchEventsResult,
+  SourceAdapter,
+  SourceRecord,
+} from "@/lib/ingestion/types";
 
 /**
  * Scaffold only — real MotorsportReg API access pending approval.
@@ -7,7 +11,7 @@ import type { RawSourceEvent, SourceAdapter, SourceRecord } from "@/lib/ingestio
 export class MotorsportRegAdapter implements SourceAdapter {
   readonly type = "motorsportreg" as const;
 
-  async fetchEvents(source: SourceRecord): Promise<RawSourceEvent[]> {
+  async fetchEvents(source: SourceRecord): Promise<FetchEventsResult> {
     void source;
     throw new Error(
       "MotorsportReg adapter is not yet configured (pending API approval)"
