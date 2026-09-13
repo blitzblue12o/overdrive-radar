@@ -14,21 +14,14 @@ import { formatSourceLabel } from "@/lib/events/presentation";
 import { formatOccurrenceDetailLines } from "@/lib/events/format";
 import { isAbsoluteHttpUrl } from "@/lib/ingestion/urls";
 
+import { getSiteOrigin } from "@/lib/site-url";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 300;
 
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
-
-function siteOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000")
-  ).replace(/\/$/, "");
-}
 
 function formatRelativeUpdated(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -61,7 +54,7 @@ export async function generateMetadata({
     normalizeDisplayText(event.description)?.slice(0, 160) ??
     `Event details for ${title} on Overdrive Radar.`;
   const canonicalPath = `/events/${buildEventSlug(event.title, event.id)}`;
-  const canonical = `${siteOrigin()}${canonicalPath}`;
+  const canonical = `${getSiteOrigin()}${canonicalPath}`;
 
   return {
     title,
@@ -139,14 +132,14 @@ export default async function EventPage({ params }: PageProps) {
     longitude: event.longitude,
     sourceUrl: websiteUrl,
     imageUrl: event.image_url,
-    canonicalUrl: `${siteOrigin()}${canonicalPath}`,
+    canonicalUrl: `${getSiteOrigin()}${canonicalPath}`,
     isFree: event.is_free,
   });
 
   const reportMailto = `mailto:hello@overdriveradar.com?subject=${encodeURIComponent(
     `Report incorrect listing: ${title}`
   )}&body=${encodeURIComponent(
-    `Event: ${title}\nURL: ${siteOrigin()}${canonicalPath}\n\nWhat's wrong?\n`
+    `Event: ${title}\nURL: ${getSiteOrigin()}${canonicalPath}\n\nWhat's wrong?\n`
   )}`;
 
   return (

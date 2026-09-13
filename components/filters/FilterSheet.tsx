@@ -25,6 +25,7 @@ import {
   setSearchedLocationParams,
 } from "@/lib/events/filters";
 import { geocodePlaceEphemeral } from "@/lib/events/geocode-place";
+import { AnalyticsEvents, trackProductEvent } from "@/lib/analytics/track";
 import { cn, debounce } from "@/lib/utils";
 
 const DATE_CHIPS = ["Today", "Tomorrow", "This Weekend", "Pick a Date"] as const;
@@ -201,6 +202,10 @@ export function FilterSheet({
       const qs = params.toString();
       const path = pathnameRef.current;
       router.replace(qs ? `${path}?${qs}` : path, { scroll: false });
+      void trackProductEvent(AnalyticsEvents.locationChanged, {
+        experience: experience.id,
+        mode: "searched",
+      });
       setLocationInput(result.label);
       setEditingLocation(false);
       setLocationError(null);
@@ -229,6 +234,21 @@ export function FilterSheet({
   );
 
   const update = (next: FilterState) => {
+    if (next.distance !== filters.distance) {
+      void trackProductEvent(AnalyticsEvents.distanceChanged, {
+        experience: experience.id,
+        distance: next.distance,
+      });
+    }
+    const prevCats = filters.categories.join(",");
+    const nextCats = next.categories.join(",");
+    if (nextCats !== prevCats) {
+      void trackProductEvent(AnalyticsEvents.categorySelected, {
+        experience: experience.id,
+        category_count: next.categories.length,
+        categories: nextCats.slice(0, 120),
+      });
+    }
     writeFiltersToUrl(pathname, searchParams, next, router);
   };
 
@@ -236,6 +256,10 @@ export function FilterSheet({
     if (location.mode === "current") return;
     setLocationError(null);
     setEditingLocation(false);
+    void trackProductEvent(AnalyticsEvents.locationChanged, {
+      experience: experience.id,
+      mode: "current",
+    });
     onUseCurrentLocation?.();
   };
 

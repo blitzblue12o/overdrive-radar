@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useExperience } from "@/components/experience/ExperienceProvider";
+import { AnalyticsEvents, trackProductEvent } from "@/lib/analytics/track";
 import { debounce } from "@/lib/utils";
 
 export function SearchBar() {
@@ -36,11 +37,17 @@ export function SearchBar() {
       const qs = params.toString();
       const path = pathnameRef.current;
       router.replace(qs ? `${path}?${qs}` : path, { scroll: false });
+      if (trimmed) {
+        void trackProductEvent(AnalyticsEvents.searchPerformed, {
+          experience: experience.id,
+          query_len: trimmed.length,
+        });
+      }
     }, 300);
 
     sync(query);
     return () => sync.cancel();
-  }, [query, router]);
+  }, [experience.id, query, router]);
 
   return (
     <div className="relative">

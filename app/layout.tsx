@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { getSiteOrigin } from "@/lib/site-url";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -17,12 +18,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ??
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000")
-  ),
+  metadataBase: new URL(getSiteOrigin()),
   title: {
     default: "Overdrive Radar",
     template: "%s · Overdrive Radar",

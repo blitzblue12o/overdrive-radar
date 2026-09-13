@@ -287,10 +287,15 @@ function ExperienceApp() {
 
   const expandDistance = useCallback(() => {
     const next = nextDistanceTier(distanceMiles);
+    void trackProductEvent(AnalyticsEvents.distanceChanged, {
+      experience: experience.id,
+      distance: `${next} mi`,
+      source: "expand",
+    });
     replaceParams((params) => {
       params.set("distance", String(next));
     });
-  }, [distanceMiles, replaceParams]);
+  }, [distanceMiles, experience.id, replaceParams]);
 
   const handleUserLocation = useCallback(
     (coords: { lat: number; lng: number } | null) => {

@@ -2,18 +2,10 @@ import type { MetadataRoute } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { listPublicEventsForSitemap } from "@/lib/events/queries";
 import { eventPath } from "@/lib/events/slug";
-
-function siteOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000")
-  ).replace(/\/$/, "");
-}
+import { getSiteOrigin } from "@/lib/site-url";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const origin = siteOrigin();
+  const origin = getSiteOrigin();
   const staticRoutes: MetadataRoute.Sitemap = [
     {
       url: `${origin}/`,
