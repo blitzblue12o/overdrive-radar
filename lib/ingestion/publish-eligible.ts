@@ -113,10 +113,13 @@ export function assertM2PublishLimit(limit: number | undefined | null): number {
   return limit;
 }
 
-export function assertTrustedEventDiscoverySource(source: PublishSource): void {
-  if (source.experience !== "event_discovery") {
+export function assertTrustedPublishSource(source: PublishSource): void {
+  if (
+    source.experience !== "event_discovery" &&
+    source.experience !== "overdrive"
+  ) {
     throw new PublishEligibleError(
-      `Source experience is "${source.experience}"; only event_discovery may auto-publish.`
+      `Source experience is "${source.experience}"; only event_discovery or overdrive may auto-publish.`
     );
   }
   if (source.publication_policy !== "trusted") {
@@ -124,6 +127,11 @@ export function assertTrustedEventDiscoverySource(source: PublishSource): void {
       `Source publication_policy is "${source.publication_policy ?? "null"}"; only trusted sources may auto-publish (fail closed).`
     );
   }
+}
+
+/** @deprecated Prefer assertTrustedPublishSource (supports Overdrive + EventDiscovery). */
+export function assertTrustedEventDiscoverySource(source: PublishSource): void {
+  assertTrustedPublishSource(source);
 }
 
 /**
@@ -135,9 +143,12 @@ export function assertSourceMayPublish(
   source: PublishSource,
   options?: { hasAllowlist?: boolean }
 ): void {
-  if (source.experience !== "event_discovery") {
+  if (
+    source.experience !== "event_discovery" &&
+    source.experience !== "overdrive"
+  ) {
     throw new PublishEligibleError(
-      `Source experience is "${source.experience}"; only event_discovery may auto-publish.`
+      `Source experience is "${source.experience}"; only event_discovery or overdrive may auto-publish.`
     );
   }
   if (source.publication_policy === "trusted") return;
@@ -205,7 +216,7 @@ export function selectEligibleForPublish(options: {
   for (const event of ordered) {
     if (allow && !allow.has(event.id)) continue;
     if (
-      event.experience !== "event_discovery" ||
+      event.experience !== options.source.experience ||
       event.source_type !== expectedSourceType
     ) {
       continue;
@@ -278,7 +289,7 @@ async function loadSource(
     .from("sources")
     .select("id,name,experience,adapter_type,publication_policy")
     .eq("name", sourceIdOrName)
-    .eq("experience", "event_discovery")
+    .limit(1)
     .maybeSingle();
 
   if (byName.error) throw new PublishEligibleError(byName.error.message);
@@ -303,7 +314,7 @@ async function loadPendingSourceEvents(
       .select(
         "id,title,starts_at,venue_name,address,latitude,longitude,possible_duplicate_of,experience,source_type,moderation_status,publication_status,decision_source,decision_reason,decision_at"
       )
-      .eq("experience", "event_discovery")
+      .eq("experience", source.experience)
       .eq("source_type", source.adapter_type)
       .eq("moderation_status", "pending")
       .eq("publication_status", "draft")
@@ -409,7 +420,7 @@ export async function executePublishEligible(
       last_verified_at: nowIso,
     })
     .in("id", ids)
-    .eq("experience", "event_discovery")
+    .eq("experience", preview.source.experience)
     .eq("source_type", preview.source.adapter_type)
     .eq("moderation_status", "pending")
     .eq("publication_status", "draft")

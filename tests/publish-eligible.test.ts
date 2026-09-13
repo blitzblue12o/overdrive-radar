@@ -81,13 +81,23 @@ describe("source policy fail-closed", () => {
     ).toThrow(/fail closed|trusted/i);
   });
 
-  it("blocks Overdrive experience", () => {
+  it("allows trusted Overdrive experience", () => {
     expect(() =>
       assertTrustedEventDiscoverySource({
         ...trustedPoway,
         experience: "overdrive",
+        adapter_type: "html_series",
       })
-    ).toThrow(/event_discovery/i);
+    ).not.toThrow();
+  });
+
+  it("blocks unknown experiences", () => {
+    expect(() =>
+      assertTrustedEventDiscoverySource({
+        ...trustedPoway,
+        experience: "other" as PublishSource["experience"],
+      })
+    ).toThrow(/event_discovery or overdrive/i);
   });
 
   it("allows trusted EventDiscovery", () => {
@@ -297,7 +307,7 @@ describe("selectEligibleForPublish", () => {
     expect(selected.map((e) => e.id)).toEqual(["ics"]);
   });
 
-  it("ignores Overdrive rows", () => {
+  it("ignores Overdrive rows for EventDiscovery sources", () => {
     const events = [
       candidate({ id: "od", experience: "overdrive" }),
       candidate({ id: "ed" }),
@@ -309,6 +319,66 @@ describe("selectEligibleForPublish", () => {
       limit: 10,
     });
     expect(selected.map((e) => e.id)).toEqual(["ed"]);
+  });
+
+  it("selects trusted Overdrive rows for Overdrive sources", () => {
+    const odSource: PublishSource = {
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      name: "Camarillo Old Town Car Cruises",
+      experience: "overdrive",
+      adapter_type: "html_series",
+      publication_policy: "trusted",
+    };
+    const events = [
+      candidate({
+        id: "od-ok",
+        experience: "overdrive",
+        source_type: "html_series",
+        title: "Camarillo Old Town Friday Night Car Cruise",
+      }),
+      candidate({ id: "ed-skip", experience: "event_discovery" }),
+    ];
+    const { selected } = selectEligibleForPublish({
+      source: odSource,
+      events,
+      now: NOW,
+      limit: 10,
+    });
+    expect(selected.map((e) => e.id)).toEqual(["od-ok"]);
+  });
+
+  it("probation Overdrive cannot select without allowlist", () => {
+    expect(() =>
+      selectEligibleForPublish({
+        source: {
+          id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          name: "Ventura Cars & Coffee",
+          experience: "overdrive",
+          adapter_type: "html_series",
+          publication_policy: "probation",
+        },
+        events: [
+          candidate({
+            experience: "overdrive",
+            source_type: "html_series",
+          }),
+        ],
+        now: NOW,
+        limit: 10,
+      })
+    ).toThrow(/allowlist/i);
+  });
+
+  it("trusted Overdrive decision reason is trusted_source+eligible", () => {
+    expect(
+      decisionReasonForSource({
+        id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        name: "Conejo Valley Cars & Coffee",
+        experience: "overdrive",
+        adapter_type: "html_series",
+        publication_policy: "trusted",
+      })
+    ).toBe("trusted_source+eligible");
   });
 
   it("probation source cannot select without allowlist", () => {

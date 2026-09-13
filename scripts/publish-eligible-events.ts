@@ -77,8 +77,8 @@ async function main() {
   console.log("============================================================");
   console.log(
     execute
-      ? "EventDiscovery M2 — EXECUTE (mutation)"
-      : "EventDiscovery M2 — PREVIEW (read-only)"
+      ? "Publication M2 — EXECUTE (mutation)"
+      : "Publication M2 — PREVIEW (read-only)"
   );
   console.log(`source: ${result.source.name}`);
   console.log(`source_id: ${result.source.id}`);
