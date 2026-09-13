@@ -1,6 +1,12 @@
 import type { ExperienceId } from "@/lib/config/experiences";
 
-export type AdapterType = "ics" | "rss" | "motorsportreg" | "librarycalendar";
+export type AdapterType =
+  | "ics"
+  | "rss"
+  | "motorsportreg"
+  | "librarycalendar"
+  | "tribe_events"
+  | "html_series";
 
 export type OverdriveCategory =
   | "car_meet"

@@ -96,6 +96,42 @@ values
     null
   ),
   (
+    'Camarillo Old Town Car Cruises',
+    'overdrive',
+    'html_series',
+    'https://www.camarillomerchant.org/camarillo-old-town-car-cruises',
+    true,
+    'drive_cruise',
+    null
+  ),
+  (
+    'Ventura County Fairgrounds Events',
+    'overdrive',
+    'tribe_events',
+    'https://venturacountyfair.org',
+    true,
+    'car_show',
+    null
+  ),
+  (
+    'Conejo Valley Cars & Coffee',
+    'overdrive',
+    'html_series',
+    'https://www.cvcarsandcoffee.com/',
+    true,
+    'car_meet',
+    null
+  ),
+  (
+    'Ventura Cars & Coffee',
+    'overdrive',
+    'html_series',
+    'https://www.lacar.com/car-events-la/cars-and-coffee-ventura',
+    true,
+    'car_meet',
+    null
+  ),
+  (
     'City of Fillmore — Community Events',
     'event_discovery',
     'ics',
@@ -313,6 +349,7 @@ update sources set sync_batch = 0 where name in (
 update sources set sync_batch = 1 where name in (
   'Thousand Oaks Library — Events Calendar',
   'PCA-LA (Porsche Club of America — Los Angeles)',
+  'Conejo Valley Cars & Coffee',
   'City of Beverly Hills — City Events and Activities',
   'Beverly Hills Public Library — Events and Activities',
   'City of Port Hueneme — Recreation & Community Services',
@@ -320,6 +357,7 @@ update sources set sync_batch = 1 where name in (
 );
 update sources set sync_batch = 2 where name in (
   'Camarillo Public Library — Events Calendar',
+  'Camarillo Old Town Car Cruises',
   'City of Poway — Community Events',
   'City of Imperial Beach — Events Calendar',
   'City of Westlake Village — Special Events',
@@ -330,5 +368,51 @@ update sources set sync_batch = 3 where name in (
   'City of Coronado — Main Calendar',
   'Simi Valley Public Library — Events',
   'City of Santa Paula — Calendar',
-  'City of Malibu — Special Events'
+  'City of Malibu — Special Events',
+  'Ventura County Fairgrounds Events',
+  'Ventura Cars & Coffee'
 );
+
+-- Overdrive Ventura sources: probation + geocode context (never auto-trusted here).
+update sources
+set publication_policy = 'probation',
+    geocode_context = 'Camarillo, CA',
+    geocode_override = '2222 Ventura Blvd, Camarillo, CA 93010',
+    sync_batch = 2,
+    updated_at = now()
+where name = 'Camarillo Old Town Car Cruises'
+  and experience = 'overdrive';
+
+update sources
+set publication_policy = 'probation',
+    geocode_context = 'Ventura, CA',
+    geocode_override = '10 W Harbor Blvd, Ventura, CA 93001',
+    sync_batch = 3,
+    updated_at = now()
+where name = 'Ventura County Fairgrounds Events'
+  and experience = 'overdrive';
+
+update sources
+set publication_policy = 'probation',
+    geocode_context = 'Thousand Oaks, CA',
+    geocode_override = '598 W Hillcrest Dr, Thousand Oaks, CA 91360',
+    sync_batch = 1,
+    updated_at = now()
+where name = 'Conejo Valley Cars & Coffee'
+  and experience = 'overdrive';
+
+update sources
+set publication_policy = 'probation',
+    geocode_context = 'Ventura, CA',
+    geocode_override = '4360 East Main Street, Ventura, CA 93003',
+    sync_batch = 3,
+    updated_at = now()
+where name = 'Ventura Cars & Coffee'
+  and experience = 'overdrive';
+
+update sources
+set publication_policy = 'probation',
+    updated_at = now()
+where experience = 'overdrive'
+  and publication_policy is distinct from 'probation'
+  and name <> 'PCA-LA (Porsche Club of America — Los Angeles)';

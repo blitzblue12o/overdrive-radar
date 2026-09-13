@@ -41,3 +41,4 @@ supabase/.temp/
 *.tsbuildinfo
 next-env.d.ts
 .env*
+tmp-ventura*

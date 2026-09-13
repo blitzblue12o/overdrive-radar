@@ -18,27 +18,31 @@ export const INITIAL_SYNC_BATCH_ASSIGNMENT: Record<string, SyncBatchId> = {
   "City of Fillmore — Community Events": 0,
   "City of Ojai — Events": 0,
 
-  // Batch 1 — Thousand Oaks heavy + PCA-LA
+  // Batch 1 — Thousand Oaks heavy + PCA-LA + Conejo
   "Thousand Oaks Library — Events Calendar": 1,
   "PCA-LA (Porsche Club of America — Los Angeles)": 1,
+  "Conejo Valley Cars & Coffee": 1,
   "City of Beverly Hills — City Events and Activities": 1,
   "Beverly Hills Public Library — Events and Activities": 1,
   "City of Port Hueneme — Recreation & Community Services": 1,
   "City of Escondido — City Events": 1,
 
-  // Batch 2 — Camarillo heavy
+  // Batch 2 — Camarillo heavy + Camarillo cruise
   "Camarillo Public Library — Events Calendar": 2,
+  "Camarillo Old Town Car Cruises": 2,
   "City of Poway — Community Events": 2,
   "City of Imperial Beach — Events Calendar": 2,
   "City of Westlake Village — Special Events": 2,
   "City of La Mesa — Community Events": 2,
   "City of Del Mar — Community Calendar": 2,
 
-  // Batch 3 — Coronado + Simi Library heavies
+  // Batch 3 — Coronado + Simi Library heavies + Ventura auto
   "City of Coronado — Main Calendar": 3,
   "Simi Valley Public Library — Events": 3,
   "City of Santa Paula — Calendar": 3,
   "City of Malibu — Special Events": 3,
+  "Ventura County Fairgrounds Events": 3,
+  "Ventura Cars & Coffee": 3,
 };
 
 export function isSyncBatchId(value: unknown): value is SyncBatchId {

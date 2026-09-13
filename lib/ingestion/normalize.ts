@@ -17,6 +17,8 @@ const OVERDRIVE_MAP: Record<string, OverdriveCategory> = {
   carshow: "car_show",
   show: "car_show",
   cruise: "drive_cruise",
+  "drive cruise": "drive_cruise",
+  drive_cruise: "drive_cruise",
   drive: "drive_cruise",
   tour: "drive_cruise",
   autocross: "autocross",
