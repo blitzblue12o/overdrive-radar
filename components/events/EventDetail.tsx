@@ -8,6 +8,7 @@ import { PriceBadge } from "@/components/events/PriceBadge";
 import { CalendarAction } from "@/components/calendar/CalendarAction";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AutoLinkText } from "@/components/events/AutoLinkText";
 import {
   displayDescriptionText,
   displayLocationLines,
@@ -214,11 +215,7 @@ export function EventDetail({
         </div>
       ) : null}
 
-      {descriptionText && (
-        <p className="text-sm leading-relaxed text-[var(--foreground)]/90">
-          {descriptionText}
-        </p>
-      )}
+      {descriptionText && <AutoLinkText text={descriptionText} />}
 
       {(mapsUrl || websiteUrl) && (
         <div className="flex flex-wrap gap-2">
