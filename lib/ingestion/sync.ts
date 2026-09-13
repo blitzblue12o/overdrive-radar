@@ -241,7 +241,7 @@ export async function syncOneSource(
     }
     if (!locked) {
       log("source_skipped_locked", { source: source.name });
-      await updateSourceStatus(client, source.id, "skipped_locked", "lock unavailable");
+      // Ledger records the skip; do not overwrite lasting source health columns.
       return {
         sourceId: source.id,
         sourceName: source.name,
