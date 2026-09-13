@@ -47,6 +47,7 @@ import {
   type ClusterLeafEvent,
 } from "@/lib/map/cluster-interaction";
 import { buildRecurrenceById } from "@/lib/events/recurrence";
+import { AnalyticsEvents, trackProductEvent } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 
 const EventMap = dynamic(
@@ -55,7 +56,7 @@ const EventMap = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="h-full w-full bg-[var(--muted)]"
+        className="h-full w-full animate-pulse bg-[var(--muted)]"
         aria-label="Loading map"
       />
     ),
@@ -126,6 +127,8 @@ function ExperienceApp() {
     lng: number;
   } | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  /** Defer Mapbox chunk until after first paint / idle — list shell stays interactive. */
+  const [mapEnabled, setMapEnabled] = useState(false);
   const [geolocateRequestKey, setGeolocateRequestKey] = useState(0);
 
   const suppressViewportFetchRef = useRef(false);
@@ -314,6 +317,9 @@ function ExperienceApp() {
   const openEvent = useCallback(
     (id: string) => {
       if (eventFromUrl === id) return;
+      void trackProductEvent(AnalyticsEvents.eventOpened, {
+        experience: experience.id,
+      });
       const mutate = (params: URLSearchParams) => {
         params.set("event", id);
       };
@@ -323,7 +329,7 @@ function ExperienceApp() {
         pushParams(mutate);
       }
     },
-    [eventFromUrl, pushParams, replaceParams]
+    [eventFromUrl, experience.id, pushParams, replaceParams]
   );
 
   const closeEvent = useCallback(() => {
@@ -453,6 +459,30 @@ function ExperienceApp() {
     return () => window.clearTimeout(id);
   }, [experience.id]);
 
+  // Load Mapbox after first paint / idle so LCP is shell+list, not map JS.
+  useEffect(() => {
+    let cancelled = false;
+    const enable = () => {
+      if (!cancelled) setMapEnabled(true);
+    };
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(enable, { timeout: 1800 });
+      return () => {
+        cancelled = true;
+        w.cancelIdleCallback?.(id);
+      };
+    }
+    const t = window.setTimeout(enable, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, []);
+
   // One debounced effect: viewport + search/filter params + initial load.
   useEffect(() => {
     if (!bbox) return;
@@ -489,6 +519,14 @@ function ExperienceApp() {
         const json = (await res.json()) as EventFeatureCollection;
         hasEventsRef.current = json.features.length > 0;
         setFeatures(json);
+        if (json.features.length === 0) {
+          void trackProductEvent(AnalyticsEvents.zeroResults, {
+            experience: experience.id,
+            has_query: Boolean(q),
+            has_category: Boolean(category),
+            distance: distanceMiles,
+          });
+        }
 
         const selectedId = eventFromUrlRef.current;
         if (selectedId) {
@@ -547,6 +585,29 @@ function ExperienceApp() {
     searchRecenterKey,
     geolocateRequestKey,
   };
+
+  const mapSlot = mapEnabled ? (
+    <EventMap key={experience.id} className={mapClassName} {...mapProps} />
+  ) : (
+    <div
+      className={cn(mapClassName, "bg-[var(--muted)]")}
+      aria-label="Map loading"
+    />
+  );
+
+  const mobileMapSlot = mapEnabled ? (
+    <EventMap
+      key={`m-${experience.id}`}
+      className={cn("absolute inset-0", mapClassName)}
+      {...mapProps}
+      controlsPosition="bottom-right"
+    />
+  ) : (
+    <div
+      className={cn("absolute inset-0", mapClassName, "bg-[var(--muted)]")}
+      aria-label="Map loading"
+    />
+  );
 
   const detailPanel = clusterPickerEvents ? (
     <ClusterEventPicker
@@ -618,11 +679,7 @@ function ExperienceApp() {
             </div>
           </aside>
           <div className="relative min-h-0">
-            <EventMap
-              key={experience.id}
-              className={mapClassName}
-              {...mapProps}
-            />
+            {mapSlot}
             {nearLabel && (
               <div className="pointer-events-auto absolute left-3 top-3 z-10">
                 <SearchAreaChip
@@ -642,7 +699,7 @@ function ExperienceApp() {
                 role="presentation"
               >
                 <div
-                  className="flex h-full w-full max-w-md flex-col overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-xl"
+                  className="flex h-full w-full max-w-md flex-col overflow-y-auto rounded-xl border border-[var(--border)]/80 bg-[var(--card)] p-4 shadow-lg"
                   onClick={(e) => e.stopPropagation()}
                   role="dialog"
                   aria-modal="true"
@@ -695,12 +752,7 @@ function ExperienceApp() {
             )}
           </div>
 
-          <EventMap
-            key={`m-${experience.id}`}
-            className={cn("absolute inset-0", mapClassName)}
-            {...mapProps}
-            controlsPosition="bottom-right"
-          />
+          {mobileMapSlot}
 
           <MobileBottomSheet
             state={sheetState}

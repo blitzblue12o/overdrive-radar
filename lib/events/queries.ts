@@ -31,6 +31,7 @@ export const EVENT_SELECT = [
   "publication_status",
   "moderation_status",
   "source_metadata",
+  "last_source_sync_at",
 ].join(", ");
 
 type ChainResult = PromiseLike<{
@@ -43,6 +44,10 @@ type QueryChain = {
   eq: (column: string, value: unknown) => QueryChain;
   neq: (column: string, value: unknown) => QueryChain;
   not: (column: string, op: string, value: unknown) => QueryChain;
+  like: (column: string, pattern: string) => QueryChain;
+  gte: (column: string, value: unknown) => QueryChain;
+  order: (column: string, opts?: { ascending?: boolean }) => QueryChain;
+  limit: (count: number) => ChainResult;
   maybeSingle: () => ChainResult;
 } & ChainResult;
 
@@ -342,4 +347,62 @@ export async function getEventById(
   const row = data as EventRecord;
   if (row.experience !== experience) return null;
   return row;
+}
+
+/**
+ * Resolve a published event from the 10-char slug suffix (uuid hex without dashes).
+ */
+export async function getPublishedEventBySlugSuffix(
+  client: EventsQueryClient,
+  shortId: string
+): Promise<EventRecord | null> {
+  const hex = shortId.toLowerCase().replace(/[^0-9a-f]/g, "");
+  if (hex.length < 10) return null;
+  const prefix = `${hex.slice(0, 8)}-${hex.slice(8, 10)}`;
+
+  const { data, error } = await client
+    .from("events")
+    .select(EVENT_SELECT)
+    .eq("publication_status", "published")
+    .eq("moderation_status", "approved")
+    .neq("event_status", "cancelled")
+    .like("id", `${prefix}%`)
+    .limit(5);
+
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as EventRecord[];
+  const match = rows.find(
+    (row) => row.id.replace(/-/g, "").toLowerCase().startsWith(hex.slice(0, 10))
+  );
+  return match ?? null;
+}
+
+/** Public crawlable events for sitemap (upcoming + recently started). */
+export async function listPublicEventsForSitemap(
+  client: EventsQueryClient,
+  limit = 2000
+): Promise<Array<Pick<EventRecord, "id" | "title" | "last_source_sync_at">>> {
+  const horizon = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await client
+    .from("events")
+    .select("id, title, last_source_sync_at, starts_at, ends_at, event_status")
+    .eq("publication_status", "published")
+    .eq("moderation_status", "approved")
+    .neq("event_status", "cancelled")
+    .gte("starts_at", horizon)
+    .order("starts_at", { ascending: true })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  const now = Date.now();
+  return ((data ?? []) as EventRecord[])
+    .filter((row) => {
+      const endMs = new Date(row.ends_at ?? row.starts_at).getTime();
+      return endMs >= now;
+    })
+    .map((row) => ({
+      id: row.id,
+      title: row.title,
+      last_source_sync_at: row.last_source_sync_at ?? null,
+    }));
 }

@@ -2,59 +2,141 @@
 
 import { cn } from "@/lib/utils";
 import { useExperience } from "@/components/experience/ExperienceProvider";
+import { CategoryIcon } from "@/components/events/CategoryIcon";
+import { formatCategoryLabel } from "@/lib/events/format";
 
-const ART: Record<string, { bg: string; shape: string }> = {
-  "car-meet": { bg: "#1e3a5f", shape: "M8 16h24l-3-6H11l-3 6zm4-8h16l2 4H10l2-4z" },
-  "car-show": { bg: "#1a2744", shape: "M6 18h28v2H6v-2zm4-8h20l3 6H7l3-6z" },
-  "drive-cruise": { bg: "#16324f", shape: "M4 20c8-8 24-8 32 0M10 14l4-4h12l4 4" },
-  autocross: { bg: "#1f2a44", shape: "M8 22l8-14 8 14H8zm8-6v4" },
-  "track-event": { bg: "#17233a", shape: "M6 18c6-10 22-10 28 0M10 12h20" },
-  "other-auto": { bg: "#1c2438", shape: "M12 10h16v12H12zM8 14h4m16 0h4" },
-  family: { bg: "#d1fae5", shape: "M12 20v-6m8 6v-6M10 10a4 4 0 108 0 4 4 0 10-8 0" },
-  community: { bg: "#ccfbf1", shape: "M8 18a4 4 0 118 0M20 18a4 4 0 118 0M16 8a4 4 0 110 8" },
-  arts: { bg: "#e0f2fe", shape: "M8 24l8-16 8 16H8zm8-4a2 2 0 100-4 2 2 0 000 4z" },
-  outdoor: { bg: "#dcfce7", shape: "M6 24l10-16 10 16H6zm10-8l4 6H12l4-6z" },
-  food: { bg: "#ecfccb", shape: "M10 8v16m4-16c0 6 0 10-2 16m10-16v16m-2-16c0 6 0 10 2 16" },
-  entertainment: { bg: "#f0fdf4", shape: "M8 10l20 6-20 6V10zm22 2v12" },
-  educational: { bg: "#e0f2f1", shape: "M6 14l14-6 14 6-14 6-14-6zm4 4v6c4 2 12 2 16 0v-6" },
+const TONE: Record<string, string> = {
+  car_meet: "#152238",
+  car_show: "#141f33",
+  drive_cruise: "#122033",
+  autocross: "#161f30",
+  track_event: "#131c2c",
+  other: "#151b28",
+  family: "#e8f5f0",
+  community: "#e6f4f2",
+  arts_and_culture: "#e8f1f8",
+  outdoor: "#e8f5ec",
+  food_and_markets: "#f0f5e6",
+  entertainment: "#eef6f0",
+  educational: "#e8f2f1",
 };
 
 export function FallbackArt({
   category,
   className,
   title,
+  sourceLabel,
+  variant = "card",
 }: {
   category: string | null | undefined;
   className?: string;
   title?: string;
+  sourceLabel?: string | null;
+  /** Compact square for cards vs designed detail hero. */
+  variant?: "card" | "hero";
 }) {
   const experience = useExperience();
-  const key =
-    (category && experience.fallbackArt[category]) ||
-    (experience.id === "overdrive" ? "other-auto" : "community");
-  const art = ART[key] ?? ART["community"];
+  const categoryLabel = formatCategoryLabel(category, experience.categories);
+  const bg =
+    (category && TONE[category]) ||
+    (experience.id === "overdrive" ? TONE.other : TONE.community);
+  const stroke =
+    experience.theme.mode === "dark" ? "rgba(147,197,253,0.55)" : "rgba(15,118,110,0.45)";
+  const ink =
+    experience.theme.mode === "dark" ? "rgba(226,232,240,0.92)" : "rgba(15,23,42,0.88)";
+  const muted =
+    experience.theme.mode === "dark" ? "rgba(148,163,184,0.9)" : "rgba(100,116,139,0.95)";
+
+  if (variant === "hero") {
+    return (
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-xl border border-[var(--border)]/60",
+          className
+        )}
+        style={{ background: bg }}
+        role="img"
+        aria-label={title ? `Illustration for ${title}` : "Event illustration"}
+      >
+        {/* Subtle route / grid motif */}
+        <svg
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.22]"
+          aria-hidden
+        >
+          <defs>
+            <pattern
+              id="od-grid"
+              width="24"
+              height="24"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M24 0H0V24"
+                fill="none"
+                stroke={stroke}
+                strokeWidth="0.6"
+              />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#od-grid)" />
+          <path
+            d="M-10 70 C 80 20, 160 110, 280 40"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <CategoryIcon
+          category={category}
+          className="pointer-events-none absolute -right-2 -bottom-3 h-[7.5rem] w-[7.5rem] opacity-[0.14]"
+          strokeWidth={1.25}
+        />
+
+        <div className="relative flex h-full min-h-[7.5rem] flex-col justify-end gap-1 px-4 py-3 sm:min-h-[8.25rem]">
+          <p
+            className="text-[11px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: muted }}
+          >
+            {categoryLabel}
+          </p>
+          {sourceLabel ? (
+            <p className="text-xs font-medium" style={{ color: ink }}>
+              {sourceLabel}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden flex items-center justify-center",
+        "relative overflow-hidden flex items-center justify-center rounded-md",
         className
       )}
-      style={{ background: art.bg }}
+      style={{ background: bg }}
       role="img"
       aria-label={title ? `Illustration for ${title}` : "Event illustration"}
     >
       <svg
-        viewBox="0 0 40 32"
-        className="w-[70%] h-[70%] opacity-80"
-        fill="none"
-        stroke={experience.theme.mode === "dark" ? "#93c5fd" : "#0f766e"}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-25"
+        aria-hidden
       >
-        <path d={art.shape} />
+        <path
+          d="M0 28 C 18 10, 36 42, 56 22"
+          fill="none"
+          stroke={stroke}
+          strokeWidth="1.2"
+        />
       </svg>
+      <CategoryIcon
+        category={category}
+        className="relative h-[55%] w-[55%] opacity-80"
+        strokeWidth={1.6}
+      />
     </div>
   );
 }

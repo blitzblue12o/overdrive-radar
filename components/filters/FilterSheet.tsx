@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { LocateFixed, SlidersHorizontal } from "lucide-react";
 import { useExperience } from "@/components/experience/ExperienceProvider";
+import { CategoryIcon } from "@/components/events/CategoryIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -94,7 +95,7 @@ function Chip({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+        "rounded-full border px-3 py-2.5 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] min-h-11",
         selected
           ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
           : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)]/60"
@@ -379,13 +380,22 @@ export function FilterSheet({
                   update({ ...filters, categories });
                 }}
                 className={cn(
-                  "rounded-lg border px-3 py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+                  "flex items-center gap-2 rounded-lg border px-2.5 py-2.5 text-left text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
                   selected
-                    ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                    : "border-[var(--border)] bg-[var(--card)]"
+                    ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--foreground)]"
+                    : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)]/40"
                 )}
               >
-                {cat.label}
+                <CategoryIcon
+                  category={cat.value}
+                  className={cn(
+                    "h-4 w-4",
+                    selected
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--muted-foreground)]"
+                  )}
+                />
+                <span>{cat.label}</span>
               </button>
             );
           })}

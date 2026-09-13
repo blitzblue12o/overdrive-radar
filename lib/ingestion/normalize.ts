@@ -5,6 +5,8 @@ import type {
   RawSourceEvent,
   SourceRecord,
 } from "@/lib/ingestion/types";
+import { cleanIngestedText, extractGeocodeAddressHint } from "@/lib/ingestion/text-clean";
+import { resolveAbsoluteHttpUrl } from "@/lib/ingestion/urls";
 
 const OVERDRIVE_MAP: Record<string, OverdriveCategory> = {
   "car meet": "car_meet",
@@ -34,24 +36,34 @@ const DISCOVERY_MAP: Record<string, EventDiscoveryCategory> = {
   community: "community",
   workshop: "community",
   meeting: "community",
+  civic: "community",
+  government: "community",
   arts: "arts_and_culture",
   culture: "arts_and_culture",
   art: "arts_and_culture",
   music: "arts_and_culture",
+  concert: "arts_and_culture",
+  theater: "arts_and_culture",
+  theatre: "arts_and_culture",
   outdoor: "outdoor",
   parks: "outdoor",
   recreation: "outdoor",
   hike: "outdoor",
+  sports: "outdoor",
   food: "food_and_markets",
   market: "food_and_markets",
   farmers: "food_and_markets",
   entertainment: "entertainment",
   festival: "entertainment",
+  movie: "entertainment",
+  film: "entertainment",
   educational: "educational",
   library: "educational",
   author: "educational",
   class: "educational",
   storytime: "educational",
+  lecture: "educational",
+  stem: "educational",
 };
 
 export type NormalizeLog = {
@@ -105,22 +117,34 @@ export function normalizeRawEvent(
   const cats = mapCategory(source.experience, raw.categories, source, log);
   const now = new Date().toISOString();
 
+  const title =
+    cleanIngestedText(raw.title, 500) ?? raw.title.slice(0, 500).trim();
+  const description = cleanIngestedText(raw.description, 8000);
+  const venueName = cleanIngestedText(raw.venueName, 300);
+  const addressRaw = cleanIngestedText(raw.address, 500);
+  // When venue/address are instruction-heavy, keep a geocode-friendly street hint.
+  const address =
+    extractGeocodeAddressHint(addressRaw) ??
+    extractGeocodeAddressHint(venueName) ??
+    addressRaw;
+  const sourceUrl = resolveAbsoluteHttpUrl(raw.url, source.feed_url);
+
   return {
     experience: source.experience,
     overdrive_category: cats.overdrive,
     event_discovery_category: cats.discovery,
-    title: raw.title.slice(0, 500),
-    description: raw.description?.slice(0, 8000) ?? null,
+    title,
+    description,
     starts_at: raw.startsAt.toISOString(),
     ends_at: raw.endsAt ? raw.endsAt.toISOString() : null,
     timezone: raw.timezone ?? "America/Los_Angeles",
-    venue_name: raw.venueName?.slice(0, 300) ?? null,
-    address: raw.address?.slice(0, 500) ?? null,
+    venue_name: venueName,
+    address,
     latitude: raw.latitude ?? null,
     longitude: raw.longitude ?? null,
     source_type: source.adapter_type,
     source_id: `${source.id}:${raw.uid}`.slice(0, 500),
-    source_url: raw.url ?? source.feed_url,
+    source_url: sourceUrl,
     source_metadata: {
       source_name: source.name,
       adapter_type: source.adapter_type,
@@ -128,7 +152,7 @@ export function normalizeRawEvent(
       categories: raw.categories ?? [],
       ...(raw.metadata ?? {}),
     },
-    organizer_name: raw.organizerName?.slice(0, 200) ?? null,
+    organizer_name: cleanIngestedText(raw.organizerName, 200),
     moderation_status: "pending",
     publication_status: "draft",
     event_status: "scheduled",

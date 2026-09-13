@@ -45,7 +45,7 @@ export function EventList({
   // short skeletons clamps the parent scroll container to the top.
   if (loading && events.length === 0) {
     return (
-      <div className="space-y-3" aria-busy="true" aria-label="Loading events">
+      <div className="space-y-1.5" aria-busy="true" aria-label="Loading events">
         {Array.from({ length: 5 }).map((_, i) => (
           <EventCardSkeleton key={i} />
         ))}
@@ -57,7 +57,7 @@ export function EventList({
     return (
       <div
         role="alert"
-        className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-4 text-sm"
+        className="rounded-lg bg-[var(--muted)] p-4 text-sm"
       >
         <p className="font-medium">Couldn’t load events</p>
         <p className="mt-1 text-[var(--muted-foreground)]">
@@ -73,17 +73,15 @@ export function EventList({
 
     if (filtersActive || showExpand) {
       return (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-4 text-sm space-y-3">
+        <div className="rounded-lg bg-[var(--muted)] p-4 text-sm space-y-3">
           <div>
-            <p className="font-medium">
-              {filtersActive
-                ? "No events match these filters"
-                : "No events in this area"}
-            </p>
+            <p className="font-medium">No events found nearby</p>
             <p className="mt-1 text-[var(--muted-foreground)]">
-              {showExpand
-                ? "Try expanding the search distance, or clear filters."
-                : "Clear filters to see more nearby events."}
+              {filtersActive && showExpand
+                ? "Try increasing the distance or clearing a filter."
+                : filtersActive
+                  ? "Clear filters to see more nearby events."
+                  : "Try increasing the search distance."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -93,7 +91,7 @@ export function EventList({
               </Button>
             )}
             {showExpand && (
-              <Button type="button" variant="outline" size="sm" onClick={onExpandDistance}>
+              <Button type="button" variant="default" size="sm" onClick={onExpandDistance}>
                 Expand distance
               </Button>
             )}
@@ -103,17 +101,17 @@ export function EventList({
     }
 
     return (
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-4 text-sm">
-        <p className="font-medium">No events in this area</p>
+      <div className="rounded-lg bg-[var(--muted)] p-4 text-sm">
+        <p className="font-medium">No events found nearby</p>
         <p className="mt-1 text-[var(--muted-foreground)]">
-          Pan the map or zoom out to discover more nearby.
+          Pan the map or zoom out to discover more.
         </p>
       </div>
     );
   }
 
   return (
-    <ul className="space-y-3" aria-label="Events">
+    <ul className="space-y-1.5" aria-label="Events">
       {events.map((event) => {
         const selected = selectedEventId === event.id;
         return (

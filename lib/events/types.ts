@@ -35,7 +35,12 @@ export interface EventRecord {
   source_metadata?: Record<string, unknown> | null;
   /** Derived from ICS VALUE=DATE metadata — not a DB column. */
   all_day?: boolean | null;
+  /** Source refresh timestamp for trust/provenance. */
+  last_source_sync_at?: string | null;
 }
+
+/** List/map payload keeps a short description preview to cut transfer size. */
+export const LIST_DESCRIPTION_MAX = 420;
 
 export type EventFeatureProperties = {
   id: string;
@@ -60,6 +65,7 @@ export type EventFeatureProperties = {
    * (typically source_metadata.source_name). Not a series id.
    */
   source_key?: string | null;
+  last_source_sync_at?: string | null;
 };
 
 export type EventFeature = GeoJSON.Feature<
@@ -91,6 +97,11 @@ export function eventToFeature(event: EventRecord): EventFeature {
       ? sourceName.trim()
       : null;
 
+  const description =
+    event.description && event.description.length > LIST_DESCRIPTION_MAX
+      ? `${event.description.slice(0, LIST_DESCRIPTION_MAX).trim()}…`
+      : event.description;
+
   return {
     type: "Feature",
     geometry: {
@@ -113,11 +124,12 @@ export function eventToFeature(event: EventRecord): EventFeature {
           : Number(event.price_amount),
       price_currency: event.price_currency,
       image_url: event.image_url,
-      description: event.description,
+      description,
       source_url: event.source_url,
       timezone: event.timezone,
       all_day: allDay,
       source_key: sourceKey,
+      last_source_sync_at: event.last_source_sync_at ?? null,
     },
   };
 }

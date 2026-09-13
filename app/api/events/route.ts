@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         };
 
   try {
-    const supabase = createClient() as unknown as EventsQueryClient;
+    const supabase = (await createClient()) as unknown as EventsQueryClient;
     const events = await getEvents(
       experience,
       {

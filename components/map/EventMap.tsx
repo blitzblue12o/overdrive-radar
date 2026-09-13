@@ -374,8 +374,8 @@ export function EventMap({
         ],
         paint: {
           "circle-color": "transparent",
-          "circle-radius": 16,
-          "circle-stroke-width": 3,
+          "circle-radius": 18,
+          "circle-stroke-width": 2.5,
           "circle-stroke-color": experience.theme.accent,
           "circle-opacity": 1,
         },
@@ -392,7 +392,7 @@ export function EventMap({
         ],
         paint: {
           "circle-color": experience.theme.accent,
-          "circle-radius": 12,
+          "circle-radius": 13,
           "circle-stroke-width": 3,
           "circle-stroke-color": "#ffffff",
           "circle-opacity": 1,

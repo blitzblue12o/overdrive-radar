@@ -3,6 +3,8 @@
  * Plain text only — does not render HTML.
  */
 
+import { resolveAbsoluteHttpUrl } from "@/lib/ingestion/urls";
+
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",
   lt: "<",
@@ -46,8 +48,11 @@ export function normalizeDisplayText(
 ): string | null {
   if (value == null) return null;
   const cleaned = decodeHtmlEntities(value)
+    .replace(/\\([,;])/g, "$1")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[-–—•*]+\s*/, "")
     .trim();
   return cleaned || null;
 }
@@ -156,7 +161,10 @@ export function resolveEventWebsiteUrl(
   description: string | null | undefined
 ): string | null {
   const src = sourceUrl?.trim() || null;
-  if (src && isAbsoluteHttpUrl(src)) return src;
+  if (src) {
+    const absolute = resolveAbsoluteHttpUrl(src);
+    if (absolute) return absolute;
+  }
 
   return splitDescriptionSourceUrl(description).sourceUrl;
 }

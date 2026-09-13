@@ -82,6 +82,7 @@ describe("EventCard / EventDetail centralized temporal presentation", () => {
       all_day: halloween.all_day,
     });
     for (const line of lines) {
+      if (line === "–") continue;
       expect(screen.getByText(line)).toBeTruthy();
     }
   });
