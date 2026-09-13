@@ -7,7 +7,6 @@ import {
 import {
   buildEventSlug,
   eventIdFromSlug,
-  shortIdFromUuid,
 } from "@/lib/events/slug";
 import { buildEventJsonLd } from "@/lib/events/json-ld";
 import { AnalyticsEvents } from "@/lib/analytics/track";
@@ -75,12 +74,12 @@ describe("normalizeRawEvent URL + venue", () => {
 });
 
 describe("event slug", () => {
-  it("builds stable slug and recovers short id", () => {
+  it("builds stable slug and recovers full uuid", () => {
     const id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     const slug = buildEventSlug("Cars & Coffee Meetup!", id);
     expect(slug).toContain("cars-coffee-meetup");
-    expect(slug.endsWith(shortIdFromUuid(id))).toBe(true);
-    expect(eventIdFromSlug(slug)).toBe(shortIdFromUuid(id));
+    expect(slug.endsWith(id)).toBe(true);
+    expect(eventIdFromSlug(slug)).toBe(id);
   });
 });
 

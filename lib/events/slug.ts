@@ -17,19 +17,17 @@ export function slugifyTitle(title: string): string {
   return base || "event";
 }
 
-/** Short stable suffix from UUID (collision-resistant, deterministic). */
-export function shortIdFromUuid(id: string): string {
-  return id.replace(/-/g, "").slice(0, 10);
-}
-
+/** Canonical public slug: title + full UUID (exact lookup; avoids UUID LIKE). */
 export function buildEventSlug(title: string, id: string): string {
-  return `${slugifyTitle(title)}-${shortIdFromUuid(id)}`;
+  return `${slugifyTitle(title)}-${id.toLowerCase()}`;
 }
 
-/** Extract event UUID from `/events/[slug]` param when suffix matches. */
+/**
+ * Extract event UUID from `/events/[slug]`.
+ * Supports full UUID suffix (canonical) and legacy 10-hex short suffix.
+ */
 export function eventIdFromSlug(slug: string): string | null {
   const trimmed = slug.trim();
-  // Prefer full UUID if somehow present.
   const uuidMatch = trimmed.match(
     /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
   );
@@ -38,6 +36,13 @@ export function eventIdFromSlug(slug: string): string | null {
   const short = trimmed.match(/-([0-9a-f]{10})$/i)?.[1];
   if (!short) return null;
   return short.toLowerCase();
+}
+
+/** True when value is a full UUID (not a short hex suffix). */
+export function isFullEventId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
 }
 
 export function eventPath(title: string, id: string): string {

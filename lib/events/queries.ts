@@ -354,11 +354,14 @@ export async function getEventById(
  */
 export async function getPublishedEventBySlugSuffix(
   client: EventsQueryClient,
-  shortId: string
+  idOrShort: string
 ): Promise<EventRecord | null> {
-  const hex = shortId.toLowerCase().replace(/[^0-9a-f]/g, "");
-  if (hex.length < 10) return null;
-  const prefix = `${hex.slice(0, 8)}-${hex.slice(8, 10)}`;
+  const raw = idOrShort.toLowerCase().trim();
+  const isFull =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(raw);
+
+  // Canonical slugs carry the full UUID so we can .eq (uuid LIKE is unsupported).
+  if (!isFull) return null;
 
   const { data, error } = await client
     .from("events")
@@ -366,15 +369,10 @@ export async function getPublishedEventBySlugSuffix(
     .eq("publication_status", "published")
     .eq("moderation_status", "approved")
     .neq("event_status", "cancelled")
-    .like("id", `${prefix}%`)
-    .limit(5);
-
+    .eq("id", raw)
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  const rows = (data ?? []) as EventRecord[];
-  const match = rows.find(
-    (row) => row.id.replace(/-/g, "").toLowerCase().startsWith(hex.slice(0, 10))
-  );
-  return match ?? null;
+  return (data as EventRecord | null) ?? null;
 }
 
 /** Public crawlable events for sitemap (upcoming + recently started). */
